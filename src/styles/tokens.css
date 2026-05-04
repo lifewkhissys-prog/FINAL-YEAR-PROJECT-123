@@ -1,0 +1,268 @@
+/* DevLab Design Tokens - Dark Modern Theme */
+
+:root {
+  /* ============================================
+     SHARED TOKENS (Shared across all themes)
+     ============================================ */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 4px;
+  --radius-pill: 4px;
+
+  /* Semantic Colors */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --success-muted: rgba(16, 185, 129, 0.1);
+  --warning-muted: rgba(245, 158, 11, 0.1);
+  --danger-muted: rgba(239, 68, 68, 0.1);
+}
+
+/* ============================================
+   DARK THEME (Default)
+   ============================================ */
+.theme-dark, :root:not([class*="theme-"]) {
+  --bg-primary: #08090C;
+  --bg-surface: #0F1117;
+  --bg-elevated: #171B24;
+  --bg-input: #1A1E28;
+  
+  --accent: #2563EB;
+  --accent-hover: #3B82F6;
+  --accent-muted: rgba(37, 99, 235, 0.12);
+  --accent-glow: rgba(37, 99, 235, 0.20);
+
+  --text-primary: #EDF0F7;
+  --text-secondary: #8B93A5;
+  --text-muted: #4B5366;
+  --text-code: #7DD3FC;
+  --btn-text: #FFFFFF;
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-accent: rgba(37, 99, 235, 0.35);
+  --grid-color: rgba(255, 255, 255, 0.03);
+  --grid-size: 40px;
+
+  --shadow-card: none;
+  --shadow-glow: none;
+  --shadow-focus: 0 0 0 2px var(--accent-muted);
+  --shadow-depth: 0 10px 50px rgba(0,0,0,0.5), 0 5px 15px rgba(0,0,0,0.3);
+  --noise-opacity: 0.05;
+  --accent-glow: rgba(37, 99, 235, 0.4);
+
+  /* Semantic Colors */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --success-muted: rgba(16, 185, 129, 0.1);
+  --warning-muted: rgba(245, 158, 11, 0.1);
+  --danger-muted: rgba(239, 68, 68, 0.1);
+  --accent-muted: rgba(37, 99, 235, 0.15);
+}
+
+/* ============================================
+   LIGHT THEME (Paper White)
+   ============================================ */
+.theme-light {
+  --bg-primary: #F9FAFB;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F3F4F6;
+  --bg-input: #FFFFFF;
+  
+  --accent: #2563EB;
+  --accent-hover: #1D4ED8;
+  --accent-muted: rgba(37, 99, 235, 0.08);
+  --accent-glow: rgba(37, 99, 235, 0.1);
+
+  --text-primary: #000000;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
+  --text-code: #0369A1;
+  --btn-text: #FFFFFF;
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-accent: rgba(37, 99, 235, 0.4);
+  --grid-color: rgba(0, 0, 0, 0.02);
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-glow: none;
+  --shadow-focus: 0 0 0 2px rgba(37, 99, 235, 0.2);
+
+  /* Semantic Colors */
+  --success: #059669;
+  --warning: #D97706;
+  --danger: #DC2626;
+  --success-muted: rgba(5, 150, 105, 0.1);
+  --warning-muted: rgba(217, 119, 6, 0.1);
+  --danger-muted: rgba(220, 38, 38, 0.1);
+  --accent-muted: rgba(37, 99, 235, 0.15);
+}
+
+/* ============================================
+   SLATE THEME (Modern Gray)
+   ============================================ */
+.theme-slate {
+  --bg-primary: #1E293B;
+  --bg-surface: #334155;
+  --bg-elevated: #475569;
+  --bg-input: #1E293B;
+  
+  --accent: #94A3B8;
+  --accent-hover: #CBD5E1;
+  --accent-muted: rgba(148, 163, 184, 0.1);
+  --accent-glow: none;
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-code: #38BDF8;
+  --btn-text: #1E293B;
+
+  --border: rgba(255, 255, 255, 0.1);
+  --border-accent: rgba(148, 163, 184, 0.3);
+  --grid-color: rgba(148, 163, 184, 0.05);
+
+  --shadow-card: none;
+  --shadow-glow: none;
+  --shadow-focus: 0 0 0 2px rgba(148, 163, 184, 0.2);
+
+  /* Semantic Colors */
+  --success: #10B981;
+  --warning: #F59E0B;
+  --danger: #EF4444;
+  --success-muted: rgba(16, 185, 129, 0.15);
+  --warning-muted: rgba(245, 158, 11, 0.15);
+  --danger-muted: rgba(239, 68, 68, 0.15);
+  --accent-muted: rgba(37, 99, 235, 0.15);
+}
+
+/* ============================================
+   HIGH CONTRAST THEME
+   ============================================ */
+.theme-contrast {
+  --bg-primary: #000000;
+  --bg-surface: #000000;
+  --bg-elevated: #000000;
+  --bg-input: #000000;
+  
+  --accent: #FFFF00; /* Pure Yellow */
+  --accent-hover: #FFFF00;
+  --accent-muted: rgba(255, 255, 0, 0.3);
+  --accent-glow: none;
+
+  --text-primary: #FFFFFF;
+  --text-secondary: #FFFFFF;
+  --text-muted: #FFFF00;
+  --text-code: #FFFF00;
+  --btn-text: #000000; /* Black text on yellow button */
+
+  --border: #FFFFFF;
+  --border-accent: #FFFF00;
+  --grid-color: rgba(255, 255, 255, 0.05);
+
+  --shadow-card: none;
+  --shadow-glow: none;
+  --shadow-focus: 0 0 0 4px #FFFF00;
+
+  /* Semantic Colors */
+  --success: #00FF00;
+  --warning: #FFFF00;
+  --danger: #FF0000;
+  --success-muted: rgba(0, 255, 0, 0.2);
+  --warning-muted: rgba(255, 255, 0, 0.2);
+  --danger-muted: rgba(255, 0, 0, 0.2);
+  --accent-muted: rgba(37, 99, 235, 0.15);
+}
+
+/* ============================================
+   PERSISTENT DARK SCOPE (For Code Editors)
+   ============================================ */
+[data-color-scheme="dark"] {
+  --editor-bg: #0B0E14;
+  --editor-header: #171B24;
+  --editor-text: #EDF0F7;
+  --editor-border: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   UTILITY CLASSES FOR TOKENS
+   ============================================ */
+
+.bg-primary {
+  background-color: var(--bg-primary);
+}
+
+.bg-surface {
+  background-color: var(--bg-surface);
+}
+
+.bg-elevated {
+  background-color: var(--bg-elevated);
+}
+
+.bg-input {
+  background-color: var(--bg-input);
+}
+
+.text-primary {
+  color: var(--text-primary);
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+.text-code {
+  color: var(--text-code);
+}
+
+.border-accent {
+  border-color: var(--border-accent);
+}
+
+.border-default {
+  border-color: var(--border);
+}
+
+/* ============================================
+   SEMANTIC UTILITY CLASSES
+   ============================================ */
+
+.text-success {
+  color: var(--success);
+}
+
+.text-warning {
+  color: var(--warning);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+.bg-success-muted {
+  background-color: var(--success-muted);
+}
+
+.bg-warning-muted {
+  background-color: var(--warning-muted);
+}
+
+.bg-danger-muted {
+  background-color: var(--danger-muted);
+}
+
+.bg-accent-muted {
+  background-color: var(--accent-muted);
+}
