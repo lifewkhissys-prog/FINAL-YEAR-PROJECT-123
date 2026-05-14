@@ -22,8 +22,8 @@ export function Topbar({ onMenuClick }) {
   };
 
   return (
-    <header className="h-16 border-b border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl sticky top-0 z-10 flex items-center justify-between px-6">
-      <div className="flex items-center gap-4">
+    <header className="h-16 border-b border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6">
+      <div className="flex items-center gap-2 sm:gap-4">
         <button 
           onClick={onMenuClick}
           className="lg:hidden btn-icon"
@@ -32,7 +32,7 @@ export function Topbar({ onMenuClick }) {
         </button>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         <button 
           onClick={() => setIsAudioActive(!isAudioActive)}
           className={`btn-icon transition-all ${isAudioActive ? 'text-brand-blue scale-110' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
@@ -56,7 +56,7 @@ export function Topbar({ onMenuClick }) {
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-blue ring-2 ring-[var(--bg-primary)]"></span>
         </button>
         
-        <div className="w-px h-6 bg-[var(--border)] mx-2"></div>
+        <div className="w-px h-6 bg-[var(--border)] mx-1 sm:mx-2"></div>
         
         <button 
           onClick={handleLogout}

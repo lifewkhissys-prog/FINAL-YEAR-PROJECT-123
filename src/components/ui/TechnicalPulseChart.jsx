@@ -16,6 +16,7 @@ export function TechnicalPulseChart({ color = 'var(--accent)', height = 40, clas
     { x: 90, y: 20 },
     { x: 100, y: 30 },
   ];
+  const startPoint = points[0] || { x: 0, y: 0 };
 
   const pathData = `M ${points.map(p => `${p.x},${p.y}`).join(' L ')}`;
   const areaData = `${pathData} L 100,40 L 0,40 Z`;
@@ -53,7 +54,7 @@ export function TechnicalPulseChart({ color = 'var(--accent)', height = 40, clas
         <motion.circle
           r="2"
           fill={color}
-          initial={{ opacity: 0 }}
+          initial={{ opacity: 0, cx: startPoint.x, cy: startPoint.y }}
           animate={{ 
             opacity: [0, 1, 0],
             cx: points.map(p => p.x),

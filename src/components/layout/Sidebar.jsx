@@ -19,36 +19,35 @@ export function Sidebar() {
   const isLecturer = user?.role === 'lecturer';
 
   const studentLinks = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/courses', icon: BookOpen, label: 'My Courses' },
-    { to: '/assessments/active', icon: Clock, label: 'Active Assessments' },
-    { to: '/submissions', icon: FolderClock, label: 'My Submissions' },
+    { to: '/student/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/student/courses', icon: BookOpen, label: 'My Courses' },
+    { to: '/student/assessments/active', icon: Clock, label: 'Active Assessments' },
+    { to: '/student/submissions', icon: FolderClock, label: 'My Submissions' },
   ];
 
   const lecturerLinks = [
-    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/lecturer/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/lecturer/courses', icon: BookOpen, label: 'My Courses' },
-    { to: '/lecturer/problems', icon: Library, label: 'Problem Bank' },
-    { to: '/lecturer/assessments', icon: Clock, label: 'Assessments' },
+    { to: '/lecturer/assessments', icon: Library, label: 'Assessments' },
   ];
 
   const links = isLecturer ? lecturerLinks : studentLinks;
 
   return (
-    <aside className="w-64 h-screen fixed left-0 top-0 border-r border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl z-20 flex flex-col">
+    <aside className="w-64 max-w-[85vw] h-full border-r border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl z-20 flex flex-col">
       <div className="h-16 flex items-center px-6 border-b border-default shrink-0">
         <Link to="/" className="flex items-center gap-2 group hover:opacity-80 transition-opacity">
           <DevLabLogo size="md" mono={false} />
         </Link>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-1">
+      <div className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-2">
         <div className="px-3 mb-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">
           Menu
         </div>
         {links.map((link) => {
           const Icon = link.icon;
-          const isActive = location.pathname === link.to || (link.to !== '/dashboard' && location.pathname.startsWith(link.to));
+          const isActive = location.pathname === link.to || location.pathname.startsWith(link.to);
           
           return (
             <Link

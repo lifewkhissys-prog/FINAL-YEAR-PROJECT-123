@@ -34,10 +34,11 @@ export function LoginPage() {
       // setAuth(res.data.user, res.data.access_token);
       
       // MOCK DATA
-      setTimeout(() => {
-        const mockUser = { id: 1, name: 'Student Demo', email, role: email.includes('lecturer') ? 'lecturer' : 'student' };
+        setTimeout(() => {
+        const role = email.includes('lecturer') ? 'lecturer' : 'student';
+        const mockUser = { id: 1, name: 'Student Demo', email, role };
         setAuth(mockUser, 'mock_token_12345');
-        navigate('/dashboard');
+        navigate(role === 'lecturer' ? '/lecturer/dashboard' : '/student/dashboard');
       }, 1000);
 
     } catch (err) {

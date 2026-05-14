@@ -39,7 +39,7 @@ export function MyCoursesPage() {
       ) : courses.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {courses.map(course => (
-            <Link key={course.id} to={`/courses/${course.id}`}>
+            <Link key={course.id} to={`/student/courses/${course.id}`}>
               <Card hover className="h-full flex flex-col group">
                 <div className="flex justify-between items-start mb-4">
                   <div className="w-10 h-10 rounded-lg bg-dark-800 border border-default flex items-center justify-center">

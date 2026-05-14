@@ -30,14 +30,19 @@ export function LecturerDashboard() {
     setTimeout(() => {
       setData({
         stats: {
-          totalStudents: 83,
-          activeCourses: 2,
-          totalProblems: 20,
-          pendingGrades: 5
+          totalCourses: 4,
+          activeAssessments: 2,
+          totalStudents: 83
         },
         upcomingAssessments: [
-          { id: 'a1', title: 'Midterm Practical', course: 'Introduction to Python', date: 'Tomorrow, 10:00 AM', enrolled: 45 },
-          { id: 'a2', title: 'SQL Joins Quiz', course: 'Database Systems', date: 'Next Friday', enrolled: 38 },
+          { id: 'a1', title: 'Midterm Practical', course: 'Introduction to Python', status: 'active', window: 'Today, 10:00 - 12:00' },
+          { id: 'a2', title: 'SQL Joins Quiz', course: 'Database Systems', status: 'scheduled', window: 'Next Friday, 10:00 - 11:00' },
+          { id: 'a3', title: 'Final Lab', course: 'Data Structures', status: 'ended', window: 'Last week' },
+        ],
+        courses: [
+          { id: '1', title: 'Introduction to Python', students: 45, assessments: 3 },
+          { id: '2', title: 'Database Systems', students: 38, assessments: 2 },
+          { id: '3', title: 'Data Structures', students: 26, assessments: 2 },
         ],
         recentSubmissions: [
           { id: 1, student: 'Ankomah Kelvin', problem: 'Two Sum', status: 'completed', score: '100%', time: '10 mins ago' },
@@ -67,19 +72,18 @@ export function LecturerDashboard() {
           <h1 className="text-4xl font-serif text-[var(--text-primary)] mb-2 tracking-tight">Lecturer Dashboard</h1>
           <p className="text-[var(--text-secondary)] font-sans">Welcome back, {user?.name.split(' ')[0] || 'Lecturer'}. Infrastructure status: <span className="text-brand-green">Stable</span></p>
         </div>
-        <Link to="/lecturer/problems/new" className="btn-primary btn-lg group">
+        <Link to="/lecturer/assessments" className="btn-primary btn-lg group">
           <FileCode2 size={18} /> 
-          <span>Initialize Problem</span>
+          <span>Manage Assessments</span>
         </Link>
       </motion.div>
 
       {/* Stats row - SaaS Style */}
       <motion.div variants={itemVariants} className="grid grid-cols-2 md:grid-cols-4 gap-px bg-white/5 border border-default overflow-hidden">
         {[
-          { label: 'Enrolled Students', value: data.stats.totalStudents, icon: Users, color: 'text-brand-blue' },
-          { label: 'Active Curricula', value: data.stats.activeCourses, icon: BookOpen, color: 'text-brand-purple' },
-          { label: 'Problem Repository', value: data.stats.totalProblems, icon: FileCode2, color: 'text-brand-green' },
-          { label: 'Pending Assessment', value: data.stats.pendingGrades, icon: CheckCircle, color: 'text-yellow-400' }
+          { label: 'Total Courses', value: data.stats.totalCourses, icon: BookOpen, color: 'text-brand-purple' },
+          { label: 'Active Assessments', value: data.stats.activeAssessments, icon: Clock, color: 'text-yellow-400' },
+          { label: 'Total Students', value: data.stats.totalStudents, icon: Users, color: 'text-brand-blue' }
         ].map((stat, i) => (
           <div 
             key={i}
@@ -118,25 +122,51 @@ export function LecturerDashboard() {
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-1.5 h-1.5 bg-brand-purple"></div>
-                      <span className="text-[10px] font-mono text-brand-purple uppercase tracking-widest">Assessment Scheduled</span>
+                      <span className="text-[10px] font-mono text-brand-purple uppercase tracking-widest">Assessment {a.status}</span>
                     </div>
                     <h3 className="font-serif text-[var(--text-primary)] text-xl group-hover:text-brand-blue transition-colors">{a.title}</h3>
                     <p className="text-xs text-[var(--text-muted)] font-mono uppercase mt-1 tracking-wider">{a.course}</p>
                   </div>
                   <div className="font-mono text-[10px] text-[var(--text-secondary)] border border-default px-2 py-1">
-                    {a.date.toUpperCase()}
+                    {a.window.toUpperCase()}
                   </div>
                 </div>
                 
                 <div className="flex items-center justify-between pt-6 border-t border-default mt-4">
                   <div className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest">
-                    <span className="text-[var(--text-primary)] font-bold">{a.enrolled}</span> Student Nodes Connected
+                    Status: <span className="text-[var(--text-primary)] font-bold">{a.status}</span>
                   </div>
                   <Link to={`/lecturer/assessments/${a.id}/gradebook`} className="text-[10px] font-mono text-brand-blue hover:underline uppercase tracking-widest flex items-center gap-2">
                     Access Gradebook <ChevronRight size={12} />
                   </Link>
                 </div>
               </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-8">
+        <motion.div variants={itemVariants} className="space-y-6">
+          <div className="flex items-center justify-between mb-2">
+             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Courses</h2>
+             <Link to="/lecturer/courses" className="text-sm font-medium text-brand-blue hover:text-brand-purple flex items-center transition-colors">
+               Manage courses
+             </Link>
+          </div>
+          <div className="grid gap-3">
+            {data.courses.map((course) => (
+              <Link
+                key={course.id}
+                to={`/lecturer/courses/${course.id}`}
+                className="glass p-4 flex items-center justify-between hover:border-brand-blue/30 transition-colors"
+              >
+                <div>
+                  <div className="font-semibold text-[var(--text-primary)]">{course.title}</div>
+                  <div className="text-xs text-[var(--text-muted)]">{course.students} students • {course.assessments} assessments</div>
+                </div>
+                <ArrowRight size={16} className="text-[var(--text-muted)]" />
+              </Link>
             ))}
           </div>
         </motion.div>

@@ -16,6 +16,7 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('devlab_token');
+      localStorage.removeItem('devlab_user');
       window.location.href = '/login';
     }
     return Promise.reject(err);

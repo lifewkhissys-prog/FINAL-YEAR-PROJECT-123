@@ -47,7 +47,7 @@ export function ActiveAssessmentsPage() {
                  <span>{a.problemsCount} problems</span>
               </div>
               
-              <Link to={`/assessments/${a.id}`} className="mt-auto btn-primary w-full justify-center">
+              <Link to={`/student/assessments/${a.id}`} className="mt-auto btn-primary w-full justify-center">
                 Enter Assessment
               </Link>
             </Card>

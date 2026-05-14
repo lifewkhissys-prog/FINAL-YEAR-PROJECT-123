@@ -1,9 +1,15 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Plus, Clock, Save } from 'lucide-react';
 import { Input, Select } from '../../components/ui/Input';
 
 export function AssessmentCreatePage() {
+  const { courseId } = useParams();
+  const courseOptions = [
+    { value: '1', label: 'Introduction to Python' },
+    { value: '2', label: 'Data Structures in Java' },
+  ];
+  const selectedCourse = courseOptions.find((course) => course.value === courseId);
+
   return (
     <div className="space-y-8 animate-fade-in pb-20">
       <div className="flex items-center justify-between">
@@ -21,14 +27,21 @@ export function AssessmentCreatePage() {
           <div className="glass p-6 space-y-4">
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4 border-b border-default pb-2">Configuration</h2>
             <Input label="Assessment Title" placeholder="e.g. Midterm Exam" />
-            
-            <Select 
-              label="Select Course" 
-              options={[
-                { value: '1', label: 'Introduction to Python' },
-                { value: '2', label: 'Data Structures in Java' },
-              ]}
-            />
+
+            {selectedCourse ? (
+              <div className="w-full">
+                <label className="label">Course</label>
+                <div className="input flex items-center justify-between">
+                  <span>{selectedCourse.label}</span>
+                  <span className="text-[var(--text-muted)] text-xs">Locked</span>
+                </div>
+              </div>
+            ) : (
+              <Select 
+                label="Select Course" 
+                options={courseOptions}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
               <Input label="Start Date & Time" type="datetime-local" />

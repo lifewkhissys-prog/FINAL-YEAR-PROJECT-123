@@ -13,11 +13,14 @@ import {
   Cpu
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import useAuthStore from '../../store/authStore';
 
 export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const role = user?.role || 'student';
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -40,7 +43,7 @@ export function CommandPalette() {
       name: 'Go to Dashboard', 
       icon: LayoutDashboard, 
       shortcut: '↵',
-      action: () => navigate('/dashboard') 
+      action: () => navigate(role === 'lecturer' ? '/lecturer/dashboard' : '/student/dashboard') 
     },
     { 
       id: 'hacker-mode', 
@@ -76,13 +79,13 @@ export function CommandPalette() {
       id: 'assess', 
       name: 'Active Assessments', 
       icon: Zap, 
-      action: () => navigate('/assessments/active') 
+      action: () => navigate(role === 'lecturer' ? '/lecturer/assessments' : '/student/assessments/active') 
     },
     { 
       id: 'problems', 
       name: 'Browse Problems', 
       icon: Code2, 
-      action: () => navigate('/courses') 
+      action: () => navigate(role === 'lecturer' ? '/lecturer/courses' : '/student/courses') 
     }
   ];
 

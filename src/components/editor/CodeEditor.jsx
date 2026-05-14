@@ -23,28 +23,30 @@ export function CodeEditor({
 }) {
   const [isSaved, setIsSaved] = useState(true);
   const [lastSaved, setLastSaved] = useState(null);
+  const normalizedLanguage = (language || 'python').toLowerCase();
+  const storageKey = problemId ? `devlab_code_${problemId}_${normalizedLanguage}` : null;
+  const editorValue = value ?? '';
+  const showHeader = Boolean(storageKey && !readOnly);
 
   // Auto-save to localStorage with debounce
   const autoSave = useCallback((code) => {
-    if (!problemId || readOnly) return;
+    if (!storageKey || readOnly) return;
 
-    const key = `devlab-draft-${problemId}`;
-    localStorage.setItem(key, JSON.stringify({
+    localStorage.setItem(storageKey, JSON.stringify({
       code,
       timestamp: Date.now(),
-      language
+      language: normalizedLanguage
     }));
 
     setIsSaved(true);
     setLastSaved(new Date());
-  }, [problemId, language, readOnly]);
+  }, [storageKey, normalizedLanguage, readOnly]);
 
   // Load draft on mount
   useEffect(() => {
-    if (!problemId || readOnly) return;
+    if (!storageKey || readOnly) return;
 
-    const key = `devlab-draft-${problemId}`;
-    const draft = localStorage.getItem(key);
+    const draft = localStorage.getItem(storageKey);
 
     if (draft) {
       try {
@@ -53,32 +55,35 @@ export function CodeEditor({
         if (Date.now() - timestamp < 24 * 60 * 60 * 1000) {
           onChange(code);
         } else {
-          localStorage.removeItem(key);
+          localStorage.removeItem(storageKey);
         }
       } catch (e) {
-        localStorage.removeItem(key);
+        localStorage.removeItem(storageKey);
       }
     }
-  }, [problemId, onChange, readOnly]);
+  }, [storageKey, onChange, readOnly]);
 
   // Debounced auto-save
   useEffect(() => {
-    if (!value || !problemId || readOnly) return;
+    if (!value || !storageKey || readOnly) return;
 
     setIsSaved(false);
     const timeoutId = setTimeout(() => autoSave(value), 2000); // Save after 2 seconds of no typing
 
     return () => clearTimeout(timeoutId);
-  }, [value, autoSave, problemId, readOnly]);
+  }, [value, autoSave, storageKey, readOnly]);
 
   const handleChange = (newValue) => {
-    onChange(newValue);
+    onChange(newValue ?? '');
   };
 
   return (
-    <div className={`rounded-lg overflow-hidden border border-default ${className}`}>
+    <div
+      className={`rounded-lg overflow-hidden border border-default flex flex-col ${className}`}
+      style={{ height }}
+    >
       {/* Auto-save indicator */}
-      {problemId && !readOnly && (
+      {showHeader && (
         <div className="flex items-center justify-between px-3 py-2 bg-[var(--bg-surface)] border-b border-default">
           <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
             {isSaved ? (
@@ -101,15 +106,16 @@ export function CodeEditor({
         </div>
       )}
 
-      <Suspense fallback={
-        <div className="flex items-center justify-center bg-[var(--bg-surface)]" style={{ height }}>
-          <Spinner />
-        </div>
-      }>
-        <MonacoEditor
-          height={height}
+      <div className="flex-1 min-h-0">
+        <Suspense fallback={
+          <div className="flex items-center justify-center bg-[var(--bg-surface)] h-full">
+            <Spinner />
+          </div>
+        }>
+          <MonacoEditor
+            height="100%"
           language={LANG_MAP[language?.toLowerCase()] || language}
-          value={value}
+          value={editorValue}
           onChange={handleChange}
           theme="vs-dark"
           options={{
@@ -125,8 +131,9 @@ export function CodeEditor({
             scrollbar: { verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
             overviewRulerLanes: 0,
           }}
-        />
-      </Suspense>
+          />
+        </Suspense>
+      </div>
     </div>
   );
 }

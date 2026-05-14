@@ -38,6 +38,11 @@ export function StatusBadge({ status }) {
     running:   { variant: 'yellow', label: 'Running' },
     pending:   { variant: 'gray',   label: 'Pending' },
     error:     { variant: 'red',    label: 'Error' },
+    active:    { variant: 'green',  label: 'Active' },
+    scheduled: { variant: 'yellow', label: 'Scheduled' },
+    ended:     { variant: 'gray',   label: 'Ended' },
+    accepted:  { variant: 'green',  label: 'Accepted' },
+    wrong:     { variant: 'red',    label: 'Wrong Answer' },
   };
   const cfg = map[status] || { variant: 'gray', label: status };
   return <Badge variant={cfg.variant}>{cfg.label}</Badge>;

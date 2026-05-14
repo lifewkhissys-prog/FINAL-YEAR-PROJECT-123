@@ -13,8 +13,8 @@ export function LecturerCoursesPage() {
   useEffect(() => {
     setTimeout(() => {
       setCourses([
-        { id: '1', title: 'Introduction to Python', language: 'python', studentsCount: 45, problemsCount: 12 },
-        { id: '2', title: 'Data Structures in Java', language: 'java', studentsCount: 38, problemsCount: 8 },
+        { id: '1', title: 'Introduction to Python', language: 'python', studentsCount: 45, assessmentsCount: 3 },
+        { id: '2', title: 'Data Structures in Java', language: 'java', studentsCount: 38, assessmentsCount: 2 },
       ]);
       setLoading(false);
     }, 500);
@@ -47,9 +47,9 @@ export function LecturerCoursesPage() {
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">My Courses</h1>
           <p className="text-sm text-[var(--text-secondary)]">Manage courses you teach.</p>
         </div>
-        <button className="btn-primary">
+        <Link to="/lecturer/courses/new" className="btn-primary">
           <Plus size={16} /> Create Course
-        </button>
+        </Link>
       </div>
 
       {courses.length > 0 ? (
@@ -78,12 +78,20 @@ export function LecturerCoursesPage() {
                   </div>
                 </div>
                 <div>
-                   <div className="text-xs text-[var(--text-muted)] mb-1">Problems</div>
-                   <div className="flex items-center gap-1.5 font-medium text-[var(--text-secondary)]">
-                     <BookOpen size={14} className="text-brand-purple" />
-                     {course.problemsCount}
-                   </div>
+                  <div className="text-xs text-[var(--text-muted)] mb-1">Assessments</div>
+                  <div className="flex items-center gap-1.5 font-medium text-[var(--text-secondary)]">
+                    <BookOpen size={14} className="text-brand-purple" />
+                    {course.assessmentsCount}
+                  </div>
                 </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                <Link to={`/lecturer/courses/${course.id}?tab=students`} className="hover:text-[var(--text-primary)]">Manage Students</Link>
+                <span>•</span>
+                <Link to={`/lecturer/courses/${course.id}?tab=assessments`} className="hover:text-[var(--text-primary)]">Assessments</Link>
+                <span>•</span>
+                <Link to={`/lecturer/courses/${course.id}?tab=edit`} className="hover:text-[var(--text-primary)]">Edit</Link>
               </div>
             </Card>
           ))}

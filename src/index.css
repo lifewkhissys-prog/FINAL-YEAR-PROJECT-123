@@ -16,6 +16,7 @@
   body {
     margin: 0;
     min-height: 100vh;
+    overflow-x: hidden;
     background-color: var(--bg-primary);
     color: var(--text-primary);
     font-family: 'DM Sans', sans-serif;
@@ -30,5 +31,89 @@
 
   code {
     font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply border border-default rounded-xl backdrop-blur-md;
+    background-color: color-mix(in srgb, var(--bg-surface) 82%, transparent);
+    box-shadow: var(--shadow-depth);
+  }
+
+  .glass-sm {
+    @apply border border-default rounded-lg backdrop-blur-sm;
+    background-color: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
+  }
+
+  .label {
+    @apply mb-2 block text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--text-secondary)];
+  }
+
+  .input {
+    @apply w-full rounded-md border border-default bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)];
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--btn-text)] transition hover:bg-[var(--accent-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-muted)] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base rounded-lg;
+  }
+
+  .btn-icon {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-md border border-default text-[var(--text-secondary)] transition hover:text-[var(--text-primary)] hover:bg-white/5;
+    background-color: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  }
+
+  .nav-item {
+    @apply w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--text-secondary)] transition;
+    background-color: color-mix(in srgb, var(--bg-elevated) 35%, transparent);
+  }
+
+  .nav-item:hover {
+    color: var(--text-primary);
+    background-color: color-mix(in srgb, var(--bg-elevated) 55%, transparent);
+  }
+
+  .nav-item.active {
+    color: var(--text-primary);
+    background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+    border: 1px solid var(--border-accent);
+  }
+}
+
+@layer utilities {
+  .shadow-glass {
+    box-shadow: var(--shadow-depth);
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out both;
+  }
+
+  .animate-slide-up {
+    animation: slide-up 0.4s ease-out both;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
