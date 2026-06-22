@@ -3,44 +3,26 @@ import { useParams } from 'react-router-dom';
 import { FullPageSpinner } from '../../components/ui/Spinner';
 import { ChallengePage } from './ChallengePage';
 import { GuidedPage } from './GuidedPage';
-
-const MOCK_PROBLEMS = {
-  '101': {
-    id: '101',
-    type: 'guided',
-    title: 'SQL Murder Mystery: The First Clue',
-    language: 'sql',
-  },
-  '103': {
-    id: '103',
-    type: 'challenge',
-    title: 'Two Sum',
-    language: 'python',
-  },
-  '104': {
-    id: '104',
-    type: 'challenge',
-    title: 'Dictionary Manipulation',
-    language: 'python',
-  },
-};
+import { useDemoStore } from '../../store/demoStore';
 
 export function StudentProblemPage() {
   const { problemId } = useParams();
+  const { problems } = useDemoStore();
   const [problem, setProblem] = useState(null);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setProblem(MOCK_PROBLEMS[problemId] || {
+    const found = problems[problemId];
+    if (found) {
+      setProblem(found);
+    } else {
+      setProblem({
         id: problemId,
         type: 'challenge',
         title: 'Unknown Problem',
-        language: 'python',
+        language: 'python'
       });
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  }, [problemId]);
+    }
+  }, [problemId, problems]);
 
   const isGuided = useMemo(() => problem?.type === 'guided', [problem]);
 

@@ -2,73 +2,99 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, ChevronRight } from 'lucide-react';
 import { FullPageSpinner } from '../../components/ui/Spinner';
+import { useDemoStore } from '../../store/demoStore';
 
 export function StudentCourseHistoryPage() {
-  const { courseId, userId } = useParams();
+  const { courseId, userId } = useParams(); // userId is studentEmail
+  const { courses, assessments, problems, submissions, studentsList } = useDemoStore();
+
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState(null);
   const [expandedKey, setExpandedKey] = useState(null);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setHistory({
-        course: 'Introduction to Python',
-        student: 'Ankomah Kelvin',
-        assessments: [
-          {
-            id: 'a1',
-            title: 'Lab 1 (Ended)',
-            problems: [
-              {
-                id: '103',
-                title: 'Two Sum',
-                attempts: 3,
-                score: '4/5',
-                submissions: [
-                  { id: 's1', submittedAt: 'Apr 12, 10:20', score: '4/5' },
-                  { id: 's2', submittedAt: 'Apr 12, 10:05', score: '3/5' },
-                  { id: 's3', submittedAt: 'Apr 12, 09:50', score: '1/5' },
-                ],
-              },
-              {
-                id: '104',
-                title: 'Valid Palindrome',
-                attempts: 1,
-                score: '5/5',
-                submissions: [
-                  { id: 's4', submittedAt: 'Apr 12, 11:10', score: '5/5' },
-                ],
-              },
-            ],
-          },
-          {
-            id: 'a2',
-            title: 'Lab 2 (Ended)',
-            problems: [
-              {
-                id: '105',
-                title: 'Binary Search',
-                attempts: 5,
-                score: '2/5',
-                submissions: [
-                  { id: 's5', submittedAt: 'Apr 20, 09:10', score: '2/5' },
-                  { id: 's6', submittedAt: 'Apr 20, 08:55', score: '1/5' },
-                ],
-              },
-            ],
-          },
-        ],
-      });
-      setLoading(false);
-    }, 400);
+    const courseObj = courses.find((c) => c.id === courseId);
+    const studentInfo = studentsList.find((s) => s.email.toLowerCase() === userId.toLowerCase()) || {
+      email: userId,
+      name: userId.split('@')[0]
+    };
 
-    return () => clearTimeout(timeoutId);
-  }, [courseId, userId]);
+    const courseTitle = courseObj ? courseObj.title : 'Course';
+
+    // Get assessments belonging to this course
+    const courseAssessments = assessments.filter((a) => a.courseId === courseId);
+
+    const assessmentsHistory = courseAssessments.map((a) => {
+      const assessmentProblems = (a.problemIds || []).map((pId) => {
+        const prob = problems[pId];
+        const total = prob && prob.testCases ? prob.testCases.length : 1;
+
+        // Submissions for this student + problem + assessment
+        const probSubs = submissions.filter(
+          (sub) =>
+            sub.studentEmail.toLowerCase() === userId.toLowerCase() &&
+            sub.assessmentId === a.id &&
+            sub.problemId === pId
+        );
+
+        // Sort new to old
+        const sortedSubs = [...probSubs].sort(
+          (x, y) => new Date(y.submittedAt).getTime() - new Date(x.submittedAt).getTime()
+        );
+
+        let highestPassed = 0;
+        const mappedSubs = sortedSubs.map((sub) => {
+          const passed = sub.testCases
+            ? sub.testCases.filter((tc) => tc.status === 'passed').length
+            : (sub.status === 'completed' ? 1 : 0);
+          
+          if (passed > highestPassed) {
+            highestPassed = passed;
+          }
+
+          const formattedTime = new Date(sub.submittedAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          }) + ' on ' + new Date(sub.submittedAt).toLocaleDateString([], {
+            month: 'short',
+            day: 'numeric'
+          });
+
+          return {
+            id: sub.id,
+            submittedAt: formattedTime,
+            score: `${passed}/${total}`
+          };
+        });
+
+        return {
+          id: pId,
+          title: prob ? prob.title : 'Problem ' + pId,
+          attempts: probSubs.length,
+          score: probSubs.length > 0 ? `${highestPassed}/${total}` : `0/${total}`,
+          submissions: mappedSubs
+        };
+      });
+
+      return {
+        id: a.id,
+        title: a.title,
+        problems: assessmentProblems
+      };
+    });
+
+    setHistory({
+      course: courseTitle,
+      student: studentInfo.name,
+      assessments: assessmentsHistory
+    });
+    setLoading(false);
+  }, [courseId, userId, courses, assessments, problems, submissions, studentsList]);
 
   if (loading || !history) return <FullPageSpinner />;
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
+    <div className="space-y-6 animate-fade-in pb-10 px-4">
       <div>
         <Link to={`/lecturer/courses/${courseId}`} className="inline-flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-4 transition-colors">
           <ArrowLeft size={16} /> Back to Course
@@ -77,41 +103,51 @@ export function StudentCourseHistoryPage() {
         <p className="text-sm text-[var(--text-secondary)]">Course: {history.course}</p>
       </div>
 
-      {history.assessments.map((assessment) => (
-        <div key={assessment.id} className="glass p-4">
-          <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">{assessment.title}</h2>
-          <div className="space-y-2">
-            {assessment.problems.map((problem) => (
-              <div key={problem.id} className="rounded border border-default bg-[var(--bg-surface)]">
-                <button
-                  className="w-full flex items-center justify-between p-3 text-left"
-                  onClick={() => setExpandedKey((prev) => (prev === `${assessment.id}:${problem.id}` ? null : `${assessment.id}:${problem.id}`))}
-                  type="button"
-                >
-                  <div>
-                    <div className="font-medium text-[var(--text-primary)]">{problem.title}</div>
-                    <div className="text-xs text-[var(--text-muted)]">{problem.attempts} submissions</div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-[var(--text-secondary)]">{problem.score}</span>
-                    <ChevronRight size={16} className="text-[var(--text-muted)]" />
-                  </div>
-                </button>
-                {expandedKey === `${assessment.id}:${problem.id}` && (
-                  <div className="border-t border-default px-4 py-3 text-sm text-[var(--text-secondary)] space-y-2">
-                    {problem.submissions.map((submission) => (
-                      <div key={submission.id} className="flex items-center justify-between">
-                        <span>{submission.submittedAt}</span>
-                        <span className="font-mono text-[var(--text-primary)]">{submission.score}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+      {history.assessments.length > 0 ? (
+        history.assessments.map((assessment) => (
+          <div key={assessment.id} className="glass p-4 border border-default rounded-xl">
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-3">{assessment.title}</h2>
+            <div className="space-y-2">
+              {assessment.problems.map((problem) => (
+                <div key={problem.id} className="rounded-lg border border-default bg-[var(--bg-surface)] overflow-hidden">
+                  <button
+                    className="w-full flex items-center justify-between p-3 text-left hover:bg-white/[0.01]"
+                    onClick={() => setExpandedKey((prev) => (prev === `${assessment.id}:${problem.id}` ? null : `${assessment.id}:${problem.id}`))}
+                    type="button"
+                  >
+                    <div>
+                      <div className="font-medium text-[var(--text-primary)]">{problem.title}</div>
+                      <div className="text-xs text-[var(--text-muted)]">{problem.attempts} submissions</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-[var(--text-secondary)]">{problem.score}</span>
+                      <ChevronRight size={16} className={`text-[var(--text-muted)] transition-transform ${expandedKey === `${assessment.id}:${problem.id}` ? 'rotate-90' : ''}`} />
+                    </div>
+                  </button>
+                  {expandedKey === `${assessment.id}:${problem.id}` && (
+                    <div className="border-t border-default px-4 py-3 text-sm text-[var(--text-secondary)] space-y-2 bg-[var(--bg-primary)]/50">
+                      {problem.submissions.length > 0 ? (
+                        problem.submissions.map((submission) => (
+                          <div key={submission.id} className="flex items-center justify-between">
+                            <span>{submission.submittedAt}</span>
+                            <span className="font-mono text-[var(--text-primary)]">{submission.score}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">No submission attempts yet.</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
+        ))
+      ) : (
+        <div className="p-8 text-center text-sm text-[var(--text-muted)] bg-[var(--bg-surface)] rounded-xl border border-default">
+          No assessments scheduled for this course yet.
         </div>
-      ))}
+      )}
     </div>
   );
 }

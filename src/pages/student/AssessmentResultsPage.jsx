@@ -1,89 +1,117 @@
 import { Fragment, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { CheckCircle2, XCircle, ArrowLeft } from 'lucide-react';
 import { FullPageSpinner } from '../../components/ui/Spinner';
 import { SubmissionPanel } from '../../components/problems/SubmissionPanel';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export function AssessmentResultsPage() {
   const { assessmentId } = useParams();
+  const user = useAuthStore((state) => state.user);
+  const { assessments, courses, problems, submissions } = useDemoStore();
+
   const [loading, setLoading] = useState(true);
   const [results, setResults] = useState(null);
   const [expandedProblemId, setExpandedProblemId] = useState(null);
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      setResults({
-        id: assessmentId,
-        title: 'Midterm Practical',
-        course: 'Introduction to Python',
-        score: '12 / 15 test cases passed',
-        problems: [
-          {
-            id: '103',
-            title: 'Two Sum',
-            score: '5/5',
-            status: 'accepted',
-            submission: {
-              status: 'completed',
-              score: 5,
-              totalCases: 5,
-              results: [
-                { id: 1, passed: true, stdin: 'nums=[2,7,11,15]\ntarget=9', expected_output: '[0,1]', actual_output: '[0,1]', exec_time_ms: 12, is_hidden: false },
-                { id: 2, passed: true, stdin: 'nums=[3,2,4]\ntarget=6', expected_output: '[1,2]', actual_output: '[1,2]', exec_time_ms: 10, is_hidden: false },
-                { id: 3, passed: true, stdin: 'nums=[3,3]\ntarget=6', expected_output: '[0,1]', actual_output: '[0,1]', exec_time_ms: 9, is_hidden: false },
-                { id: 4, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 11, is_hidden: true },
-                { id: 5, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 14, is_hidden: true },
-              ]
-            }
-          },
-          {
-            id: '101',
-            title: 'SQL Murder Mystery',
-            score: '4/5',
-            status: 'wrong',
-            submission: {
-              status: 'completed',
-              score: 4,
-              totalCases: 5,
-              results: [
-                { id: 1, passed: true, stdin: 'block-1', expected_output: 'OK', actual_output: 'OK', exec_time_ms: 11, is_hidden: false },
-                { id: 2, passed: true, stdin: 'block-2', expected_output: 'OK', actual_output: 'OK', exec_time_ms: 13, is_hidden: false },
-                { id: 3, passed: true, stdin: 'block-3', expected_output: 'OK', actual_output: 'OK', exec_time_ms: 9, is_hidden: false },
-                { id: 4, passed: false, stdin: 'block-4', expected_output: 'OK', actual_output: 'Missing row', exec_time_ms: 16, is_hidden: false },
-                { id: 5, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 12, is_hidden: true },
-              ]
-            }
-          },
-          {
-            id: '104',
-            title: 'Dictionary Manipulation',
-            score: '3/5',
-            status: 'wrong',
-            submission: {
-              status: 'completed',
-              score: 3,
-              totalCases: 5,
-              results: [
-                { id: 1, passed: true, stdin: 'input=...', expected_output: '3', actual_output: '3', exec_time_ms: 14, is_hidden: false },
-                { id: 2, passed: true, stdin: 'input=...', expected_output: '7', actual_output: '7', exec_time_ms: 12, is_hidden: false },
-                { id: 3, passed: false, stdin: 'input=...', expected_output: '9', actual_output: '2', exec_time_ms: 21, is_hidden: false },
-                { id: 4, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 8, is_hidden: true },
-                { id: 5, passed: false, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 12, is_hidden: true },
-              ]
-            }
-          },
-        ],
-      });
+    if (!user) return;
+
+    const storeAssessment = assessments.find((a) => a.id === assessmentId);
+    if (!storeAssessment) {
+      setResults(null);
       setLoading(false);
-    }, 400);
+      return;
+    }
 
-    return () => clearTimeout(timeoutId);
-  }, [assessmentId]);
+    const courseObj = courses.find((c) => c.id === storeAssessment.courseId);
 
-  if (loading || !results) return <FullPageSpinner />;
+    let overallPassed = 0;
+    let overallTotal = 0;
+
+    const mappedProblems = (storeAssessment.problemIds || []).map((pId) => {
+      const prob = problems[pId];
+      if (!prob) return null;
+
+      const totalCases = prob.testCases ? prob.testCases.length : 1;
+      
+      // Find student's submissions for this problem
+      const studentSubs = submissions.filter(
+        (s) => s.studentEmail.toLowerCase() === user.email.toLowerCase() && s.problemId === pId
+      );
+
+      // Find the submission with highest score
+      let bestSub = null;
+      let maxPassed = 0;
+
+      studentSubs.forEach((sub) => {
+        const passed = sub.testCases ? sub.testCases.filter((tc) => tc.status === 'passed').length : (sub.status === 'completed' ? 1 : 0);
+        if (passed >= maxPassed) {
+          maxPassed = passed;
+          bestSub = sub;
+        }
+      });
+
+      overallPassed += maxPassed;
+      overallTotal += totalCases;
+
+      const scoreLabel = `${maxPassed}/${totalCases}`;
+      const status = bestSub && bestSub.status === 'completed' && maxPassed === totalCases ? 'accepted' : 'wrong';
+
+      const submissionPanelData = bestSub
+        ? {
+            status: bestSub.status,
+            score: maxPassed,
+            totalCases: totalCases,
+            stderr: bestSub.error,
+            results: (bestSub.testCases || []).map((t, idx) => ({
+              id: t.id || idx,
+              passed: t.status === 'passed',
+              stdin: 'Sample stdin',
+              expected_output: 'Expected output',
+              actual_output: t.status === 'passed' ? 'Expected output' : (bestSub.error || 'Output mismatch'),
+              exec_time_ms: parseInt(t.executionTime) || 12,
+              is_hidden: false
+            }))
+          }
+        : {
+            status: 'not_started',
+            score: 0,
+            totalCases: totalCases,
+            results: []
+          };
+
+      return {
+        id: prob.id,
+        title: prob.title,
+        score: scoreLabel,
+        status,
+        submission: submissionPanelData
+      };
+    }).filter(Boolean);
+
+    setResults({
+      id: storeAssessment.id,
+      title: storeAssessment.title,
+      course: courseObj ? courseObj.title : 'General Course',
+      score: `${overallPassed} / ${overallTotal} test cases passed`,
+      problems: mappedProblems
+    });
+    setLoading(false);
+  }, [assessmentId, assessments, courses, problems, submissions, user]);
+
+  if (loading) return <FullPageSpinner />;
+  if (!results) return <div className="p-8 text-[var(--text-primary)]">Results not found.</div>;
 
   return (
-    <div className="space-y-6 animate-fade-in pb-10">
+    <div className="space-y-6 animate-fade-in pb-10 px-4">
+      <div className="mb-2">
+        <Link to="/student/dashboard" className="text-xs text-brand-blue hover:text-brand-purple flex items-center gap-1 font-mono uppercase">
+          <ArrowLeft size={12} /> Dashboard
+        </Link>
+      </div>
+
       <div>
         <h1 className="text-3xl font-bold text-[var(--text-primary)]">Assessment Results</h1>
         <p className="text-sm text-[var(--text-secondary)]">{results.title} • {results.course}</p>

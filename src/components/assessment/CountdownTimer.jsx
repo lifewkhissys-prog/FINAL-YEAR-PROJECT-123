@@ -40,20 +40,25 @@ export function CountdownTimer({ endsAt, onExpired }) {
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const seconds = totalSeconds % 60;
 
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    } else {
+      return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
   };
 
-  const isWarning = timeLeft > 0 && timeLeft <= 300; // 5 minutes warning
-  const isCritical = timeLeft > 0 && timeLeft <= 60; // 1 minute critical
+  const isCritical = timeLeft > 0 && timeLeft <= 300; // Under 5 minutes is red and pulses
 
   let colorClass = 'text-[var(--text-primary)] bg-dark-800 border-default';
-  if (isExpired) colorClass = 'text-red-400 bg-red-500/10 border-red-500/30';
-  else if (isCritical) colorClass = 'text-red-400 bg-red-500/20 border-red-500/50 animate-pulse';
-  else if (isWarning) colorClass = 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30';
+  if (isExpired) {
+    colorClass = 'text-red-400 bg-red-500/10 border-red-500/30';
+  } else if (isCritical) {
+    colorClass = 'text-red-400 bg-red-500/20 border-red-500/50 animate-pulse';
+  }
 
   return (
     <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-mono font-bold text-lg shadow-glass transition-colors ${colorClass}`}>
-      <Clock size={20} className={isWarning || isCritical ? 'animate-pulse' : ''} />
+      <Clock size={20} className={isCritical ? 'animate-pulse' : ''} />
       {formatTime(timeLeft)}
     </div>
   );

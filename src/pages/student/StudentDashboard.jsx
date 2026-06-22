@@ -5,6 +5,7 @@ import { BookOpen, CalendarClock, Clock, GraduationCap, ArrowRight } from 'lucid
 import { FullPageSpinner } from '../../components/ui/Spinner';
 import { StatusBadge, TechBadge, LangBadge } from '../../components/ui/Badge';
 import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 // Animation variants
 const containerVariants = {
@@ -22,29 +23,62 @@ const itemVariants = {
 
 export function StudentDashboard() {
   const user = useAuthStore((state) => state.user);
+  const { courses, assessments } = useDemoStore();
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
+  const [data, setData] = useState({ activeAssessments: [], upcomingAssessments: [], enrolledCourses: [] });
 
   useEffect(() => {
-    setTimeout(() => {
-      setData({
-        activeAssessments: [
-          { id: 'a1', title: 'Midterm Practical', course: 'Introduction to Python', timeRemaining: '45 mins left' },
-          { id: 'a2', title: 'SQL Joins Quiz', course: 'Database Systems', timeRemaining: '2 days left' }
-        ],
-        upcomingAssessments: [
-          { id: 'a3', title: 'Sorting Lab', course: 'Data Structures in Java', startsIn: 'Starts in 3 days' },
-          { id: 'a4', title: 'SQL Aggregates', course: 'Database Systems', startsIn: 'Starts in 6 days' }
-        ],
-        enrolledCourses: [
-          { id: '1', title: 'Introduction to Python', lecturer: 'Dr. Smith', language: 'python' },
-          { id: '2', title: 'Data Structures in Java', lecturer: 'Prof. Johnson', language: 'java' },
-          { id: '3', title: 'Database Systems', lecturer: 'Dr. Lee', language: 'sql' }
-        ]
-      });
-      setLoading(false);
-    }, 600);
-  }, []);
+    if (!user) return;
+
+    const enrolled = courses.filter(c => c.students.includes(user.email));
+    const enrolledCourseIds = enrolled.map(c => c.id);
+    const studentAssessments = assessments.filter(a => enrolledCourseIds.includes(a.courseId));
+
+    const now = Date.now();
+    const active = studentAssessments.filter(a => {
+      const start = new Date(a.startsAt).getTime();
+      const end = new Date(a.endsAt).getTime();
+      return now >= start && now <= end;
+    }).map(a => {
+      const course = enrolled.find(c => c.id === a.courseId);
+      const end = new Date(a.endsAt).getTime();
+      const minDiff = Math.max(0, Math.floor((end - now) / 60000));
+      const hours = Math.floor(minDiff / 60);
+      const mins = minDiff % 60;
+      const timeRemaining = hours > 0 ? `${hours}h ${mins}m left` : `${mins}m left`;
+      return {
+        id: a.id,
+        title: a.title,
+        course: course ? course.title : 'Unknown Course',
+        timeRemaining
+      };
+    });
+
+    const upcoming = studentAssessments.filter(a => {
+      const start = new Date(a.startsAt).getTime();
+      return now < start;
+    }).map(a => {
+      const course = enrolled.find(c => c.id === a.courseId);
+      const start = new Date(a.startsAt).getTime();
+      const minDiff = Math.max(0, Math.floor((start - now) / 60000));
+      const days = Math.floor(minDiff / 1440);
+      const hours = Math.floor((minDiff % 1440) / 60);
+      const startsIn = days > 0 ? `Starts in ${days} days` : `Starts in ${hours} hours`;
+      return {
+        id: a.id,
+        title: a.title,
+        course: course ? course.title : 'Unknown Course',
+        startsIn
+      };
+    });
+
+    setData({
+      activeAssessments: active,
+      upcomingAssessments: upcoming,
+      enrolledCourses: enrolled
+    });
+    setLoading(false);
+  }, [courses, assessments, user]);
 
   if (loading) return <FullPageSpinner />;
 

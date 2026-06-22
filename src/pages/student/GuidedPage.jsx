@@ -1,46 +1,98 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { Play, CheckCircle2, XCircle, Lock } from 'lucide-react';
+import { Play, CheckCircle2, XCircle, Lock, ArrowLeft, Minimize2 } from 'lucide-react';
 import { CodeEditor } from '../../components/editor/CodeEditor';
 import { FullPageSpinner } from '../../components/ui/Spinner';
+import { AttemptHeader } from '../../components/layout/AttemptHeader';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export function GuidedPage({ problemId, initialProblem }) {
   const params = useParams();
+  const location = useLocation();
   const resolvedProblemId = problemId || params.problemId || params.id;
+  const user = useAuthStore((state) => state.user);
+  const { courses, problems, submissions, addSubmission, assessments } = useDemoStore();
+
   const [problem, setProblem] = useState(null);
   const [codeValues, setCodeValues] = useState({});
   const [results, setResults] = useState({});
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [openHints, setOpenHints] = useState({});
   
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const bottomRef = useRef(null);
+
+  const isAssessmentSession = new URLSearchParams(location.search).get('mode') === 'assessment';
+
+  const backUrl = useMemo(() => {
+    if (isAssessmentSession) {
+      const activeAssessment = assessments.find(
+        (a) => a.problemIds.includes(resolvedProblemId) &&
+               new Date(a.startsAt).getTime() <= Date.now() &&
+               new Date(a.endsAt).getTime() > Date.now()
+      );
+      const assessmentObj = activeAssessment || assessments.find(a => a.problemIds.includes(resolvedProblemId));
+      if (assessmentObj) {
+        return `/student/assessments/${assessmentObj.id}`;
+      }
+    }
+    return '/student/dashboard';
+  }, [isAssessmentSession, assessments, resolvedProblemId]);
+
+  const assessmentEndsAt = useMemo(() => {
+    if (!isAssessmentSession) return null;
+    const activeAssessment = assessments.find(
+      (a) => a.problemIds.includes(resolvedProblemId) &&
+             new Date(a.startsAt).getTime() <= Date.now() &&
+             new Date(a.endsAt).getTime() > Date.now()
+    );
+    const assessmentObj = activeAssessment || assessments.find(a => a.problemIds.includes(resolvedProblemId));
+    return assessmentObj ? assessmentObj.endsAt : null;
+  }, [isAssessmentSession, assessments, resolvedProblemId]);
 
   useEffect(() => {
     if (initialProblem) {
       setProblem(initialProblem);
-      return undefined;
+      return;
     }
 
-    const timeoutId = setTimeout(() => {
+    const storeProblem = problems[resolvedProblemId];
+    if (storeProblem) {
+      // Map blocks from DB format to editor format
+      const mappedBlocks = (storeProblem.blocks || []).map((b, i) => {
+        if (b.type === 'text') {
+          return { type: 'narrative', content: b.content };
+        } else if (b.type === 'code') {
+          return {
+            id: b.id || `b${i}`,
+            type: 'editor',
+            starter_code: b.starterCode || '',
+            expected_output: b.expectedOutput || '',
+            hint: b.hint || ''
+          };
+        }
+        return b;
+      });
+
+      setProblem({
+        ...storeProblem,
+        blocks: mappedBlocks
+      });
+    } else {
       setProblem({
         id: resolvedProblemId,
         type: 'guided',
-        title: 'SQL Murder Mystery: The First Clue',
-        language: 'sql',
+        title: 'Variables & Math',
+        language: 'python',
         blocks: [
-          { type: 'narrative', content: 'A crime has taken place and the detective needs your help. The detective gave you the crime scene report, but you somehow lost it. You vaguely remember that the crime was a **murder** that occurred sometime on **Jan 15, 2018** and that it took place in **SQL City**.' },
-          { type: 'narrative', content: 'Start by retrieving the corresponding crime scene report from the police department’s database.' },
-          { id: 'b1', type: 'editor', starter_code: 'SELECT * FROM crime_scene_report\n--', expected_output: 'murder|20180115|SQL City|Life aint no joke.', hint: 'Focus on the date and city. Filter by date first, then location.' },
-          { type: 'narrative', content: 'Excellent! The report says: "Security footage shows that there were 2 witnesses. The first witness lives at the last house on Northwestern Dr. The second witness, named Annabel, lives somewhere on Franklin Ave."\n\nLet\'s find the first witness.' },
-          { id: 'b2', type: 'editor', starter_code: 'SELECT * FROM person\nWHERE address_street_name = "Northwestern Dr"\nORDER BY address_number DESC\nLIMIT 1;', expected_output: '14887|Morty Schapiro|118009|111564949|Northwestern Dr', hint: 'Order by house number descending to get the last house.' },
-          { type: 'narrative', content: '🎉 You found Morty! Now find Annabel.' },
+          { type: 'narrative', content: '### Welcome to Python Variables\nIn Python, variables are created when you assign a value to it.' },
+          { id: 'b1', type: 'editor', starter_code: 'x = 5\nprint(x)', expected_output: '5\n', hint: 'Assign 5 to x and print it.' }
         ]
       });
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [initialProblem, resolvedProblemId]);
+    }
+  }, [initialProblem, resolvedProblemId, problems]);
 
   useEffect(() => {
     if (!problem?.id) return;
@@ -105,33 +157,89 @@ export function GuidedPage({ problemId, initialProblem }) {
     }
   }, [problem, firstUnsolvedIndex]);
 
+  const totalSections = editorBlocks.length;
+  const solvedCount = solvedBlockIds.length;
+  const allSolved = totalSections > 0 && solvedCount === totalSections;
+
+  // Sync complete submission to store
+  useEffect(() => {
+    if (allSolved && problem && user) {
+      const course = courses.find((c) => c.problemIds.includes(problem.id));
+      const courseTitle = course ? course.title : 'Self Practice';
+
+      const alreadySubmitted = submissions.some(
+        (s) =>
+          s.studentEmail.toLowerCase() === user.email.toLowerCase() &&
+          s.problemId === problem.id &&
+          s.status === 'completed'
+      );
+
+      if (!alreadySubmitted) {
+        addSubmission({
+          studentEmail: user.email,
+          studentName: user.name,
+          problemId: problem.id,
+          problemTitle: problem.title,
+          course: courseTitle,
+          type: 'guided',
+          language: problem.language,
+          status: 'completed',
+          score: '100%',
+          code: JSON.stringify(codeValues),
+          is_graded: true
+        });
+      }
+    }
+  }, [allSolved, problem, user, courses, submissions, addSubmission, codeValues]);
+
   const handleRun = (blockId, expectedOutput) => {
     setIsEvaluating(true);
 
     setTimeout(() => {
       const code = (codeValues[blockId] || '').trim();
-      const isCorrect = code.length > 0 && Math.random() > 0.35;
+      const isCorrect = code.length > 0;
 
       setResults((prev) => ({
         ...prev,
         [blockId]: {
           passed: isCorrect,
-          actual: isCorrect ? expectedOutput : 'Output mismatched. Please re-check your query.'
+          actual: isCorrect ? expectedOutput : 'Please provide code/query implementation before running.'
         }
       }));
 
       setIsEvaluating(false);
-    }, 900);
+    }, 600);
   };
 
   if (!problem) return <FullPageSpinner />;
 
-  const totalSections = editorBlocks.length;
-  const solvedCount = solvedBlockIds.length;
-  const allSolved = totalSections > 0 && solvedCount === totalSections;
-
   return (
-    <div className="max-w-3xl mx-auto py-8 animate-fade-in">
+    <div className="h-full flex flex-col bg-[var(--bg-primary)] overflow-hidden relative">
+      {!isFocusMode && (
+        <AttemptHeader
+          title={problem.title}
+          language={problem.language}
+          isAssessment={isAssessmentSession}
+          endsAt={assessmentEndsAt}
+          onExpired={() => {}}
+          backUrl={backUrl}
+          onToggleFocusMode={() => setIsFocusMode(true)}
+        />
+      )}
+
+      {isFocusMode && (
+        <button
+          onClick={() => setIsFocusMode(false)}
+          className="fixed bottom-4 right-4 z-50 p-2.5 rounded-lg bg-brand-blue text-white shadow-lg hover:bg-brand-purple transition-all flex items-center gap-2 text-xs font-mono uppercase font-semibold border border-brand-blue/30"
+          title="Exit Focus Mode"
+        >
+          <Minimize2 size={14} /> Exit Focus Mode
+        </button>
+      )}
+
+      <div className="flex-1 overflow-y-auto py-8">
+        <div className="max-w-3xl mx-auto px-4">
+
       <div className="flex flex-col gap-3 mb-8 border-b border-default pb-4">
         <h1 className="text-3xl font-bold text-[var(--text-primary)]">{problem.title}</h1>
         <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
@@ -242,7 +350,9 @@ export function GuidedPage({ problemId, initialProblem }) {
         )}
 
         <div ref={bottomRef} />
+        </div>
       </div>
     </div>
+  </div>
   );
 }

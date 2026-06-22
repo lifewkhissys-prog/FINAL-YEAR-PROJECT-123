@@ -5,24 +5,39 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LangBadge } from '../../components/ui/Badge';
 import { SkeletonCard } from '../../components/ui/Skeleton';
+import { useDemoStore } from '../../store/demoStore';
 
 export function LecturerCoursesPage() {
+  const { courses: storeCourses, assessments, submissions } = useDemoStore();
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setTimeout(() => {
-      setCourses([
-        { id: '1', title: 'Introduction to Python', language: 'python', studentsCount: 45, assessmentsCount: 3 },
-        { id: '2', title: 'Data Structures in Java', language: 'java', studentsCount: 38, assessmentsCount: 2 },
-      ]);
-      setLoading(false);
-    }, 500);
-  }, []);
+    const mapped = storeCourses.map((c) => {
+      // Find count of unique students that submitted to problems in this course
+      const courseProblems = c.problemIds || [];
+      const courseSubmissions = submissions.filter((s) => courseProblems.includes(s.problemId));
+      const uniqueEmails = new Set(courseSubmissions.map((s) => s.studentEmail.toLowerCase()));
+      const studentCount = uniqueEmails.size > 0 ? uniqueEmails.size : 12; // Default realistic mockup size
+
+      const courseAssessmentsCount = assessments.filter((a) => a.courseId === c.id).length;
+
+      return {
+        id: c.id,
+        title: c.title,
+        language: c.language || 'python',
+        studentsCount: studentCount,
+        assessmentsCount: courseAssessmentsCount
+      };
+    });
+
+    setCourses(mapped);
+    setLoading(false);
+  }, [storeCourses, assessments, submissions]);
 
   if (loading) {
     return (
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-6 animate-fade-in px-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="h-8 w-48 bg-[var(--bg-surface)] rounded animate-pulse mb-2"></div>
@@ -41,7 +56,7 @@ export function LecturerCoursesPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in px-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">My Courses</h1>
@@ -101,7 +116,7 @@ export function LecturerCoursesPage() {
           icon={BookOpen} 
           title="No courses found" 
           message="You haven't created any courses yet." 
-          action={<button className="btn-primary"><Plus size={16} /> Create Course</button>}
+          action={<Link to="/lecturer/courses/new" className="btn-primary"><Plus size={16} /> Create Course</Link>}
         />
       )}
     </div>

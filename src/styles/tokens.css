@@ -182,6 +182,66 @@
 }
 
 /* ============================================
+   KNUST THEME (Forest Green, Gold, Lust)
+   ============================================ */
+.theme-knust {
+  --bg-primary: #009739;        /* Forest Green (60% background layout) */
+  --bg-surface: #FFD100;        /* Gold (30% secondary cards/elements) */
+  --bg-elevated: #E6BC00;       /* Slightly darker Gold for elevation */
+  --bg-input: #FFFFFF;          /* Keep inputs white or light gold */
+  
+  --accent: #EF3340;            /* Lust (10% action buttons/accents) */
+  --accent-hover: #D82632;      /* Darker Lust */
+  --accent-muted: rgba(239, 51, 64, 0.15);
+  --accent-glow: rgba(239, 51, 64, 0.3);
+
+  --text-primary: #FFFFFF;      /* White text for contrast on green */
+  --text-secondary: #EDF0F7;    /* Light text for headers outside cards */
+  --text-muted: #D1D5DB;        /* Light muted text outside cards */
+  --text-code: #FFD100;
+  --btn-text: #FFFFFF;          /* White text on action buttons (red) */
+
+  --border: rgba(255, 255, 255, 0.2);
+  --border-accent: #FFD100;
+  --grid-color: rgba(255, 255, 255, 0.08);
+
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-glow: none;
+  --shadow-focus: 0 0 0 3px rgba(239, 51, 64, 0.4);
+
+  /* Semantic Colors */
+  --success: #009739;
+  --warning: #FFD100;
+  --danger: #EF3340;
+  --success-muted: rgba(0, 151, 57, 0.15);
+  --warning-muted: rgba(255, 209, 0, 0.15);
+  --danger-muted: rgba(239, 51, 64, 0.15);
+}
+
+/* Local overrides inside card surfaces to maintain typography readability on Gold (#FFD100) */
+.theme-knust .glass,
+.theme-knust .glass-sm,
+.theme-knust .nav-item,
+.theme-knust .command-palette-modal,
+.theme-knust table,
+.theme-knust select,
+.theme-knust input,
+.theme-knust textarea {
+  --text-primary: #0B0E14 !important;
+  --text-secondary: #2C303B !important;
+  --text-muted: #535A6E !important;
+  --border: rgba(0, 0, 0, 0.12) !important;
+}
+
+.theme-knust input,
+.theme-knust select,
+.theme-knust textarea {
+  color: #0B0E14 !important;
+  background-color: #FFFFFF !important;
+}
+
+
+/* ============================================
    PERSISTENT DARK SCOPE (For Code Editors)
    ============================================ */
 [data-color-scheme="dark"] {

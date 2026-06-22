@@ -4,22 +4,47 @@ import { BookOpen, User, ArrowRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LangBadge } from '../../components/ui/Badge';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export function MyCoursesPage() {
-  const [courses, setCourses] = useState([]);
+  const user = useAuthStore((state) => state.user);
+  const { courses, problems, submissions } = useDemoStore();
+  const [enrolledCourses, setEnrolledCourses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Mock fetching enrolled courses
-    setTimeout(() => {
-      setCourses([
-        { id: '1', title: 'Introduction to Python', lecturer: 'Dr. Smith', language: 'python', problemsCount: 12, completedCount: 5 },
-        { id: '2', title: 'Data Structures in Java', lecturer: 'Prof. Johnson', language: 'java', problemsCount: 8, completedCount: 8 },
-        { id: '3', title: 'Database Systems', lecturer: 'Dr. Lee', language: 'sql', problemsCount: 15, completedCount: 2 }
-      ]);
-      setLoading(false);
-    }, 800);
-  }, []);
+    if (!user) return;
+
+    // Filter enrolled courses
+    const studentCourses = courses.filter((c) => c.students.includes(user.email));
+
+    // Get completed problem submissions
+    const completedProblems = new Set(
+      submissions
+        .filter((s) => s.studentEmail.toLowerCase() === user.email.toLowerCase() && s.status === 'completed')
+        .map((s) => s.problemId)
+    );
+
+    // Map course metadata
+    const mapped = studentCourses.map((c) => {
+      const pCount = c.problemIds.length;
+      const compCount = c.problemIds.filter((id) => completedProblems.has(id)).length;
+      const firstProblem = c.problemIds.length > 0 ? problems[c.problemIds[0]] : null;
+      const language = firstProblem ? firstProblem.language : 'python';
+
+      return {
+        ...c,
+        lecturer: c.lecturer === 'lecturer@uni.edu' ? 'Dr. Yaw Anim' : c.lecturer,
+        language,
+        problemsCount: pCount,
+        completedCount: compCount
+      };
+    });
+
+    setEnrolledCourses(mapped);
+    setLoading(false);
+  }, [courses, problems, submissions, user]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -36,9 +61,9 @@ export function MyCoursesPage() {
             <div key={i} className="h-48 glass rounded-xl animate-pulse bg-white/5"></div>
           ))}
         </div>
-      ) : courses.length > 0 ? (
+      ) : enrolledCourses.length > 0 ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.map(course => (
+          {enrolledCourses.map(course => (
             <Link key={course.id} to={`/student/courses/${course.id}`}>
               <Card hover className="h-full flex flex-col group">
                 <div className="flex justify-between items-start mb-4">

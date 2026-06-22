@@ -36,7 +36,8 @@ export function LoginPage() {
       // MOCK DATA
         setTimeout(() => {
         const role = email.includes('lecturer') ? 'lecturer' : 'student';
-        const mockUser = { id: 1, name: 'Student Demo', email, role };
+        const name = role === 'lecturer' ? 'Lecturer Demo' : 'Student Demo';
+        const mockUser = { id: 1, name, email, role };
         setAuth(mockUser, 'mock_token_12345');
         navigate(role === 'lecturer' ? '/lecturer/dashboard' : '/student/dashboard');
       }, 1000);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sun, Moon, Monitor, Activity, ChevronDown } from 'lucide-react';
+import { Sun, Moon, Monitor, Activity, ChevronDown, GraduationCap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const themes = [
@@ -7,6 +7,7 @@ const themes = [
   { id: 'light', name: 'Light Mode', icon: Sun, class: 'theme-light' },
   { id: 'slate', name: 'Modern Slate', icon: Monitor, class: 'theme-slate' },
   { id: 'contrast', name: 'High Contrast', icon: Activity, class: 'theme-contrast' },
+  { id: 'knust', name: 'KNUST Mode', icon: GraduationCap, class: 'theme-knust' },
 ];
 
 export function ThemeSwitcher() {

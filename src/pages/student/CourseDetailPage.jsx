@@ -3,33 +3,108 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Play, CheckCircle, Clock } from 'lucide-react';
 import { TypeBadge, StatusBadge, LangBadge } from '../../components/ui/Badge';
 import { FullPageSpinner } from '../../components/ui/Spinner';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export function CourseDetailPage() {
   const { id } = useParams();
+  const user = useAuthStore((state) => state.user);
+  const { courses, problems, assessments, submissions } = useDemoStore();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setTimeout(() => {
-      setCourse({
-        id,
-        title: 'Introduction to Python',
-        description: 'Learn the basics of Python programming, from variables to data structures.',
-        problems: [
-          { id: '101', title: 'Hello World', type: 'guided', status: 'completed', language: 'python', bestScore: '1/1' },
-          { id: '102', title: 'Variables & Types', type: 'guided', status: 'completed', language: 'python', bestScore: '1/1' },
-          { id: '103', title: 'List Comprehensions', type: 'challenge', status: 'pending', language: 'python', bestScore: '3/5' },
-          { id: '104', title: 'Dictionary Manipulation', type: 'challenge', status: 'pending', language: 'python', bestScore: '2/5' },
-        ],
-        assessments: [
-          { id: 'a1', title: 'Midterm Practical', status: 'active', timeRemaining: '45 mins left' },
-          { id: 'a2', title: 'Sorting Lab', status: 'upcoming', date: 'Next Friday' },
-          { id: 'a3', title: 'Foundations Quiz', status: 'ended', date: 'Ended last week' }
-        ]
-      });
+    if (!user) return;
+    const foundCourse = courses.find((c) => c.id === id);
+    if (!foundCourse) {
+      setCourse(null);
       setLoading(false);
-    }, 500);
-  }, [id]);
+      return;
+    }
+
+    // Filter problems for this course
+    const courseProblems = (foundCourse.problemIds || []).map((pId) => {
+      const prob = problems[pId];
+      if (!prob) return null;
+
+      // Check student submissions
+      const studentSubs = submissions.filter(
+        (s) => s.studentEmail.toLowerCase() === user.email.toLowerCase() && s.problemId === pId
+      );
+      
+      const hasCompleted = studentSubs.some((s) => s.status === 'completed');
+      const status = hasCompleted ? 'completed' : studentSubs.length > 0 ? 'pending' : 'not_started';
+
+      let bestScore = '0%';
+      if (prob.type === 'challenge') {
+        const totalCases = prob.testCases ? prob.testCases.length : 0;
+        let maxPassed = 0;
+        studentSubs.forEach((sub) => {
+          if (sub.status === 'completed') {
+            maxPassed = totalCases;
+          } else if (sub.testCases) {
+            const passed = sub.testCases.filter((tc) => tc.status === 'passed').length;
+            if (passed > maxPassed) maxPassed = passed;
+          }
+        });
+        bestScore = totalCases > 0 ? `${maxPassed}/${totalCases}` : '0/0';
+      } else {
+        // Guided
+        bestScore = hasCompleted ? '1/1' : '0/1';
+      }
+
+      return {
+        ...prob,
+        status,
+        bestScore
+      };
+    }).filter(Boolean);
+
+    // Filter assessments for this course
+    const courseAssessments = assessments
+      .filter((a) => a.courseId === id)
+      .map((a) => {
+        const now = Date.now();
+        const start = new Date(a.startsAt).getTime();
+        const end = new Date(a.endsAt).getTime();
+        
+        let status = 'upcoming';
+        let timeLabel = '';
+
+        if (now >= start && now <= end) {
+          status = 'active';
+          const minDiff = Math.max(0, Math.floor((end - now) / 60000));
+          const hours = Math.floor(minDiff / 60);
+          const mins = minDiff % 60;
+          timeLabel = hours > 0 ? `${hours}h ${mins}m left` : `${mins}m left`;
+        } else if (now < start) {
+          status = 'upcoming';
+          const minDiff = Math.max(0, Math.floor((start - now) / 60000));
+          const days = Math.floor(minDiff / 1440);
+          const hours = Math.floor((minDiff % 1440) / 60);
+          timeLabel = days > 0 ? `Starts in ${days} days` : `Starts in ${hours} hours`;
+        } else {
+          status = 'ended';
+          const dateObj = new Date(a.endsAt);
+          timeLabel = `Ended ${dateObj.toLocaleDateString()}`;
+        }
+
+        return {
+          id: a.id,
+          title: a.title,
+          status,
+          timeRemaining: status === 'active' ? timeLabel : undefined,
+          date: status !== 'active' ? timeLabel : undefined
+        };
+      });
+
+    setCourse({
+      ...foundCourse,
+      problems: courseProblems,
+      assessments: courseAssessments
+    });
+    setLoading(false);
+  }, [id, courses, problems, assessments, submissions, user]);
 
   const groupedProblems = useMemo(() => {
     if (!course) return { guided: [], challenge: [] };

@@ -1,86 +1,147 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useLocation, useParams, Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { Play, Send } from 'lucide-react';
+import { Play, Send, ArrowLeft, Minimize2 } from 'lucide-react';
 import { CodeEditor } from '../../components/editor/CodeEditor';
 import { SubmissionPanel } from '../../components/problems/SubmissionPanel';
+import { AttemptHeader } from '../../components/layout/AttemptHeader';
 import { CountdownTimer } from '../../components/assessment/CountdownTimer';
 import { FullPageSpinner } from '../../components/ui/Spinner';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 import toast from 'react-hot-toast';
 
 export function ChallengePage({ problemId, initialProblem }) {
   const params = useParams();
   const location = useLocation();
   const resolvedProblemId = problemId || params.problemId || params.id;
+  const user = useAuthStore((state) => state.user);
+  const { courses, problems, assessments, addSubmission } = useDemoStore();
+
   const [problem, setProblem] = useState(null);
   const [code, setCode] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('python');
   const [submission, setSubmission] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [assessmentEnded, setAssessmentEnded] = useState(false);
+  const [isFocusMode, setIsFocusMode] = useState(false);
   const isAssessmentSession = new URLSearchParams(location.search).get('mode') === 'assessment';
 
+  const backUrl = useMemo(() => {
+    if (isAssessmentSession) {
+      const activeAssessment = assessments.find(
+        (a) => a.problemIds.includes(resolvedProblemId) &&
+               new Date(a.startsAt).getTime() <= Date.now() &&
+               new Date(a.endsAt).getTime() > Date.now()
+      );
+      const assessmentObj = activeAssessment || assessments.find(a => a.problemIds.includes(resolvedProblemId));
+      if (assessmentObj) {
+        return `/student/assessments/${assessmentObj.id}`;
+      }
+    }
+    return '/student/dashboard';
+  }, [isAssessmentSession, assessments, resolvedProblemId]);
+
+  const getStarterCode = (lang) => {
+    const normalized = (lang || 'python').toLowerCase();
+    if (normalized === 'python') return 'def solve():\n    # Write your code here\n    pass';
+    if (normalized === 'java') return 'public class Main {\n    public static void main(String[] args) {\n        // Write your code here\n    }\n}';
+    if (normalized === 'cpp') return '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}';
+    if (normalized === 'sql') return 'SELECT *\nFROM your_table\n-- Write your query here';
+    return '// Write your code here';
+  };
+
   useEffect(() => {
-    const getStarterCode = (lang) => {
-      const normalized = (lang || 'python').toLowerCase();
-      if (normalized === 'python') return 'def solve():\n    # Write your code here\n    pass';
-      if (normalized === 'java') return 'public class Main {\n    public static void main(String[] args) {\n        // Write your code here\n    }\n}';
-      if (normalized === 'cpp') return '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}';
-      if (normalized === 'sql') return 'SELECT *\nFROM your_table\n-- Write your query here';
-      return '// Write your code here';
-    };
+    const activeAssessment = assessments.find(
+      (a) => a.problemIds.includes(resolvedProblemId) &&
+             new Date(a.startsAt).getTime() <= Date.now() &&
+             new Date(a.endsAt).getTime() > Date.now()
+    );
+    const assessmentObj = activeAssessment || assessments.find(a => a.problemIds.includes(resolvedProblemId));
+    const endsAt = assessmentObj ? assessmentObj.endsAt : new Date(Date.now() + 60000 * 30).toISOString();
 
     if (initialProblem) {
-      const starter = initialProblem.starter_code || getStarterCode(initialProblem.language);
+      const starter = initialProblem.starterCode || getStarterCode(initialProblem.language);
       setProblem({
         ...initialProblem,
         starter_code: starter,
+        languages: [initialProblem.language || 'python'],
+        constraints: '- `2 <= nums.length <= 10^4`\n- Memory Limit: 256MB\n- Time Limit: 2.0s',
+        sample_cases: [
+          { input: 'Sample Test Case #1', output: 'Passed' }
+        ],
+        assessment_ends_at: isAssessmentSession ? endsAt : null
       });
       setCode(starter);
       setSelectedLanguage(initialProblem.language || 'python');
-      return undefined;
+      return;
     }
 
-    const timeoutId = setTimeout(() => {
-      const prob = {
+    const storeProblem = problems[resolvedProblemId];
+    if (storeProblem) {
+      const starter = storeProblem.starterCode || getStarterCode(storeProblem.language);
+      
+      // Infer constraints and sample cases if missing
+      const constraints = `- Time Limit: ${storeProblem.timeLimitMs || 2000}ms\n- Memory Limit: ${storeProblem.memoryLimitMb || 256}MB`;
+      const sampleCases = storeProblem.testCases && storeProblem.testCases.length > 0
+        ? storeProblem.testCases.filter(tc => !tc.isHidden).map(tc => ({
+            input: tc.stdin || 'None',
+            output: tc.expectedStdout || 'None'
+          }))
+        : [{ input: 'Default Case', output: 'Passed' }];
+
+      setProblem({
+        ...storeProblem,
+        starter_code: starter,
+        languages: [storeProblem.language || 'python'],
+        constraints,
+        sample_cases: sampleCases,
+        assessment_ends_at: isAssessmentSession ? endsAt : null
+      });
+      setCode(starter);
+      setSelectedLanguage(storeProblem.language || 'python');
+    } else {
+      // Fallback
+      setProblem({
         id: resolvedProblemId,
         type: 'challenge',
         title: 'Two Sum',
         language: 'python',
-        languages: ['python', 'java'],
-        description: 'Given an array of integers `nums` and an integer `target`, return indices of the two numbers such that they add up to `target`.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.',
-        constraints: '- `2 <= nums.length <= 10^4`\n- `-10^9 <= nums[i] <= 10^9`',
-        starter_code: 'def twoSum(nums, target):\n    # Write your code here\n    pass',
-        sample_cases: [
-          { input: 'nums = [2,7,11,15], target = 9', output: '[0,1]' }
-        ],
-        assessment_ends_at: isAssessmentSession ? new Date(Date.now() + 60000 * 30).toISOString() : null
-      };
-      const starter = prob.starter_code || getStarterCode(prob.language);
-      setProblem({
-        ...prob,
-        starter_code: starter,
+        languages: ['python'],
+        description: 'Given an array of integers `nums` and an integer `target`, return indices of the two numbers such that they add up to `target`.',
+        constraints: '- `2 <= nums.length <= 10^4`',
+        starter_code: 'def two_sum(nums, target):\n    pass',
+        sample_cases: [{ input: 'nums = [2,7,11,15], target = 9', output: '[0,1]' }],
+        assessment_ends_at: isAssessmentSession ? endsAt : null
       });
-      setCode(starter);
-      setSelectedLanguage(prob.language || 'python');
-    }, 500);
-
-    return () => clearTimeout(timeoutId);
-  }, [initialProblem, resolvedProblemId, isAssessmentSession]);
+      setCode('def two_sum(nums, target):\n    pass');
+      setSelectedLanguage('python');
+    }
+  }, [initialProblem, resolvedProblemId, isAssessmentSession, problems, assessments]);
 
   const handleAction = (isSubmit) => {
     if (isAssessmentSession && assessmentEnded && problem?.assessment_ends_at) return;
     setIsSubmitting(true);
 
-    // Mock submission flow
     setTimeout(() => {
-      const mockResults = [
-        { id: 1, passed: true, actual_output: '[0, 1]', expected_output: '[0, 1]', exec_time_ms: 12, is_hidden: false },
-        { id: 2, passed: false, actual_output: '[]', expected_output: '[1, 2]', exec_time_ms: 15, is_hidden: false },
-        { id: 3, passed: true, actual_output: '', expected_output: '', exec_time_ms: 11, is_hidden: true },
+      const testCases = problem.testCases || [
+        { id: 1, stdin: 'Sample case', expectedStdout: 'Passed', isHidden: false }
       ];
 
-      const passedTests = mockResults.filter(r => r.passed).length;
+      const mockResults = testCases.map((tc) => {
+        const codeTrimmed = (code || '').trim();
+        const passed = codeTrimmed.length > 0;
+        return {
+          id: tc.id,
+          passed,
+          actual_output: passed ? (tc.expectedStdout || 'Passed') : 'Error: Output mismatch or execution timed out.',
+          expected_output: tc.expectedStdout || 'Passed',
+          exec_time_ms: Math.floor(Math.random() * 25) + 8,
+          is_hidden: tc.isHidden
+        };
+      });
+
+      const passedTests = mockResults.filter((r) => r.passed).length;
       const totalTests = mockResults.length;
 
       setSubmission({
@@ -91,7 +152,6 @@ export function ChallengePage({ problemId, initialProblem }) {
       });
       setIsSubmitting(false);
 
-      // Show toast notification
       if (passedTests === totalTests) {
         toast.success(`🎉 All tests passed! ${passedTests}/${totalTests} correct`);
       } else if (passedTests > 0) {
@@ -99,7 +159,35 @@ export function ChallengePage({ problemId, initialProblem }) {
       } else {
         toast.error(`❌ All tests failed. Check your solution and try again.`);
       }
-    }, 2000);
+
+      // Save submission to database if submitting
+      if (isSubmit && user) {
+        const course = courses.find((c) => c.problemIds.includes(problem.id));
+        const courseTitle = course ? course.title : 'Self Practice';
+
+        const percent = totalTests > 0 ? Math.round((passedTests / totalTests) * 100) : 0;
+        const status = percent === 100 ? 'completed' : 'error';
+
+        addSubmission({
+          studentEmail: user.email,
+          studentName: user.name,
+          problemId: problem.id,
+          problemTitle: problem.title,
+          course: courseTitle,
+          type: 'challenge',
+          language: selectedLanguage,
+          status,
+          score: `${percent}%`,
+          code: code,
+          is_graded: true,
+          testCases: mockResults.map((r) => ({
+            id: r.id,
+            status: r.passed ? 'passed' : 'failed',
+            executionTime: `${r.exec_time_ms}ms`
+          }))
+        });
+      }
+    }, 1500);
   };
 
   const languageOptions = useMemo(() => {
@@ -118,14 +206,7 @@ export function ChallengePage({ problemId, initialProblem }) {
 
     const nextStarter = (problem.starter_code && problem.language === nextLanguage)
       ? problem.starter_code
-      : (() => {
-          const normalized = (nextLanguage || 'python').toLowerCase();
-          if (normalized === 'python') return 'def solve():\n    # Write your code here\n    pass';
-          if (normalized === 'java') return 'public class Main {\n    public static void main(String[] args) {\n        // Write your code here\n    }\n}';
-          if (normalized === 'cpp') return '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Write your code here\n    return 0;\n}';
-          if (normalized === 'sql') return 'SELECT *\nFROM your_table\n-- Write your query here';
-          return '// Write your code here';
-        })();
+      : getStarterCode(nextLanguage);
 
     setSelectedLanguage(nextLanguage);
     setCode(nextStarter);
@@ -135,19 +216,36 @@ export function ChallengePage({ problemId, initialProblem }) {
   if (!problem) return <FullPageSpinner />;
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col animate-fade-in bg-[var(--bg-primary)]">
+    <div className="h-full flex flex-col animate-fade-in bg-[var(--bg-primary)] relative">
+      {!isFocusMode && (
+        <AttemptHeader
+          title={problem.title}
+          language={selectedLanguage}
+          isAssessment={isAssessmentSession}
+          endsAt={problem.assessment_ends_at}
+          onExpired={() => setAssessmentEnded(true)}
+          backUrl={backUrl}
+          onToggleFocusMode={() => setIsFocusMode(true)}
+        />
+      )}
+
+      {isFocusMode && (
+        <button
+          onClick={() => setIsFocusMode(false)}
+          className="fixed bottom-4 right-4 z-50 p-2.5 rounded-lg bg-brand-blue text-white shadow-lg hover:bg-brand-purple transition-all flex items-center gap-2 text-xs font-mono uppercase font-semibold border border-brand-blue/30"
+          title="Exit Focus Mode"
+        >
+          <Minimize2 size={14} /> Exit Focus Mode
+        </button>
+      )}
+
       <div className="flex-1 flex overflow-hidden">
         <div className="w-full lg:w-[40%] border-r border-default bg-[var(--bg-surface)] overflow-y-auto p-6">
-          <div className="flex items-start justify-between gap-4 mb-6">
-            <div>
-              <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-2">{problem.title}</h1>
-              <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                {problem.language}
-              </span>
-            </div>
-            {isAssessmentSession && problem.assessment_ends_at && !assessmentEnded && (
-              <CountdownTimer endsAt={problem.assessment_ends_at} onExpired={() => setAssessmentEnded(true)} />
-            )}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">{problem.title}</h1>
+            <span className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
+              {selectedLanguage}
+            </span>
           </div>
 
           {isAssessmentSession && assessmentEnded && problem.assessment_ends_at && (
@@ -157,13 +255,13 @@ export function ChallengePage({ problemId, initialProblem }) {
           )}
 
           <div className="prose prose-invert prose-pre:bg-[var(--bg-primary)] prose-pre:border-default max-w-none">
-            <ReactMarkdown>{problem.description}</ReactMarkdown>
+            <ReactMarkdown>{problem.description || ''}</ReactMarkdown>
 
             <h3 className="text-lg font-semibold mt-8 border-b border-default pb-2">Constraints</h3>
-            <ReactMarkdown>{problem.constraints}</ReactMarkdown>
+            <ReactMarkdown>{problem.constraints || ''}</ReactMarkdown>
 
             <h3 className="text-lg font-semibold mt-8 border-b border-default pb-2">Sample Cases</h3>
-            {problem.sample_cases.map((sc, i) => (
+            {problem.sample_cases && problem.sample_cases.map((sc, i) => (
               <div key={i} className="mt-4 bg-[var(--bg-primary)] p-3 rounded-lg border border-default font-mono text-sm">
                 <div className="text-[var(--text-muted)] mb-1">Input:</div>
                 <div className="text-[var(--text-secondary)] mb-3">{sc.input}</div>
@@ -194,14 +292,26 @@ export function ChallengePage({ problemId, initialProblem }) {
                 disabled={isSubmitting || (isAssessmentSession && assessmentEnded && problem.assessment_ends_at)}
                 className="btn-secondary py-1.5 px-3"
               >
-                <Play size={14} /> Run
+                {isAssessmentSession && assessmentEnded && problem.assessment_ends_at ? (
+                  "Time's up"
+                ) : (
+                  <>
+                    <Play size={14} /> Run
+                  </>
+                )}
               </button>
               <button
                 onClick={() => handleAction(true)}
                 disabled={isSubmitting || (isAssessmentSession && assessmentEnded && problem.assessment_ends_at)}
                 className="btn-success py-1.5 px-3"
               >
-                <Send size={14} /> Submit
+                {isAssessmentSession && assessmentEnded && problem.assessment_ends_at ? (
+                  "Time's up"
+                ) : (
+                  <>
+                    <Send size={14} /> Submit
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -243,14 +353,26 @@ export function ChallengePage({ problemId, initialProblem }) {
                 disabled={isSubmitting || (isAssessmentSession && assessmentEnded && problem.assessment_ends_at)}
                 className="btn-secondary py-1.5 px-3"
               >
-                <Play size={14} /> Run
+                {isAssessmentSession && assessmentEnded && problem.assessment_ends_at ? (
+                  "Time's up"
+                ) : (
+                  <>
+                    <Play size={14} /> Run
+                  </>
+                )}
               </button>
               <button
                 onClick={() => handleAction(true)}
                 disabled={isSubmitting || (isAssessmentSession && assessmentEnded && problem.assessment_ends_at)}
                 className="btn-success py-1.5 px-3"
               >
-                <Send size={14} /> Submit
+                {isAssessmentSession && assessmentEnded && problem.assessment_ends_at ? (
+                  "Time's up"
+                ) : (
+                  <>
+                    <Send size={14} /> Submit
+                  </>
+                )}
               </button>
             </div>
           </div>

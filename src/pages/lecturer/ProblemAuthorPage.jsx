@@ -1,18 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Save, Eye, Layout, Loader2, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Input, Select, Textarea } from '../../components/ui/Input';
 import { CodeEditor } from '../../components/editor/CodeEditor';
-import { useProblemStore } from '../../store/problemStore';
+import { useDemoStore } from '../../store/demoStore';
+import toast from 'react-hot-toast';
 
 export function ProblemAuthorPage() {
   const { assessmentId, problemId } = useParams();
   const navigate = useNavigate();
   const isEditing = !!problemId;
   const [isPreview, setIsPreview] = useState(false);
-  const { saveProblem, loading } = useProblemStore();
+  const { problems, saveProblem } = useDemoStore();
   const [step, setStep] = useState('setup');
+  const [saving, setSaving] = useState(false);
+
   const [metadata, setMetadata] = useState({
     title: '',
     type: 'challenge',
@@ -33,6 +36,36 @@ export function ProblemAuthorPage() {
     { id: Date.now().toString(), type: 'narrative', content: 'Start your guided narrative here.' },
     { id: (Date.now() + 1).toString(), type: 'editor', starterCode: 'SELECT * FROM table_name;', expectedOutput: '', hint: '' },
   ]);
+
+  // Load existing problem data when editing
+  useEffect(() => {
+    if (isEditing && problemId) {
+      const existing = problems[problemId];
+      if (existing) {
+        setMetadata({
+          title: existing.title || '',
+          type: existing.type || 'challenge',
+          language: existing.language || 'python',
+          timeLimit: existing.timeLimitMs || 2000,
+          memoryLimit: existing.memoryLimitMb || 256
+        });
+        if (existing.type === 'challenge') {
+          setChallengeDraft({
+            description: existing.description || '',
+            starterCode: existing.starterCode || '',
+            testCases: (existing.testCases || []).map((t, index) => ({
+              id: t.id || (Date.now() + index),
+              stdin: t.stdin || '',
+              expectedStdout: t.expectedStdout || '',
+              isHidden: !!t.isHidden
+            }))
+          });
+        } else {
+          setGuidedBlocks(existing.blocks || []);
+        }
+      }
+    }
+  }, [isEditing, problemId, problems]);
 
   const canContinue = metadata.title.trim() && metadata.type && metadata.language;
 
@@ -89,12 +122,25 @@ export function ProblemAuthorPage() {
   };
 
   const removeGuidedBlock = (id) => {
+    const block = guidedBlocks.find(b => b.id === id);
+    if (block) {
+      const hasContent = block.type === 'narrative' 
+        ? (block.content || '').trim().length > 0 
+        : ((block.starterCode || '').trim().length > 0 || (block.expectedOutput || '').trim().length > 0 || (block.hint || '').trim().length > 0);
+      
+      if (hasContent) {
+        if (!window.confirm("This block has content. Delete anyway?")) {
+          return;
+        }
+      }
+    }
     setGuidedBlocks((prev) => prev.filter((block) => block.id !== id));
   };
 
   const payload = useMemo(() => {
     if (metadata.type === 'challenge') {
       return {
+        id: problemId,
         assessmentId,
         title: metadata.title,
         type: metadata.type,
@@ -107,6 +153,7 @@ export function ProblemAuthorPage() {
       };
     }
     return {
+      id: problemId,
       assessmentId,
       title: metadata.title,
       type: metadata.type,
@@ -115,22 +162,34 @@ export function ProblemAuthorPage() {
       memoryLimitMb: metadata.memoryLimit,
       blocks: guidedBlocks,
     };
-  }, [assessmentId, challengeDraft, guidedBlocks, metadata]);
+  }, [assessmentId, problemId, challengeDraft, guidedBlocks, metadata]);
 
-  const handleSave = async () => {
-    try {
-      await saveProblem({ id: problemId, ...payload });
-      if (!isEditing) {
-        navigate(`/lecturer/assessments/${assessmentId}`);
+  const handleSave = () => {
+    if (!metadata.title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (metadata.type === 'challenge') {
+      const cases = challengeDraft.testCases || [];
+      if (cases.length === 0) {
+        toast.error('Add at least one test case.');
+        return;
       }
-      alert('Problem saved.');
-    } catch (error) {
-      alert('Failed to save problem: ' + error.message);
+    }
+    setSaving(true);
+    try {
+      saveProblem(payload);
+      toast.success('🎉 Problem saved successfully!');
+      navigate(`/lecturer/assessments/${assessmentId}`);
+    } catch (err) {
+      toast.error('Failed to save problem: ' + err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-20">
+    <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-20 px-4">
       <div className="flex items-center justify-between sticky top-0 z-20 bg-[var(--bg-primary)]/80 backdrop-blur-md py-4 border-b border-default">
         <div className="flex items-center gap-6">
           <Link to={`/lecturer/assessments/${assessmentId}`} className="p-2 hover:bg-white/5 rounded-full transition-colors text-[var(--text-secondary)]">
@@ -146,14 +205,21 @@ export function ProblemAuthorPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {step === 'editor' && (
+            <button
+              onClick={() => setStep('setup')}
+              className="px-4 h-10 hover:bg-white/5 text-[var(--text-secondary)] border border-default rounded-lg font-bold text-xs"
+            >
+              Back to Setup
+            </button>
+          )}
           <button
-            disabled={loading}
             onClick={() => setIsPreview(!isPreview)}
             className={`px-4 h-10 flex items-center gap-2 rounded-lg font-bold text-xs transition-all border ${
               isPreview
                 ? 'bg-brand-blue/10 text-brand-blue border-brand-blue/20'
                 : 'hover:bg-white/5 text-[var(--text-secondary)] border-default'
-            } disabled:opacity-50`}
+            }`}
           >
             {isPreview ? <Layout size={16} /> : <Eye size={16} />}
             {isPreview ? 'Exit Preview' : 'Preview'}
@@ -161,10 +227,10 @@ export function ProblemAuthorPage() {
           {!isPreview && (
             <button
               onClick={handleSave}
-              disabled={loading}
+              disabled={saving}
               className="btn-primary px-6 h-10 flex items-center gap-2 shadow-lg shadow-brand-blue/20 disabled:opacity-50"
             >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
               {isEditing ? 'Update Problem' : 'Save Problem'}
             </button>
           )}
@@ -242,7 +308,7 @@ export function ProblemAuthorPage() {
                 onChange={(event) => setChallengeDraft((prev) => ({ ...prev, description: event.target.value }))}
               />
             </div>
-            <div className="glass p-6 space-y-4">
+            <div className="glass p-6 space-y-4 max-h-[400px] overflow-y-auto">
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">Live Preview</h2>
               <div className="prose prose-invert max-w-none text-sm">
                 <ReactMarkdown>{challengeDraft.description || 'Nothing to preview yet.'}</ReactMarkdown>
@@ -433,4 +499,3 @@ export function ProblemAuthorPage() {
     </div>
   );
 }
-

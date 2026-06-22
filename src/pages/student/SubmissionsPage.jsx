@@ -5,8 +5,13 @@ import { Badge, LangBadge, TypeBadge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { FullPageSpinner } from '../../components/ui/Spinner';
 import { SubmissionPanel } from '../../components/problems/SubmissionPanel';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export function SubmissionsPage() {
+  const user = useAuthStore((state) => state.user);
+  const { submissions: storeSubmissions } = useDemoStore();
+  
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -19,79 +24,55 @@ export function SubmissionsPage() {
   const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
-    setTimeout(() => {
-      setSubmissions([
-        {
-          id: 's1',
-          problemId: '103',
-          problemTitle: 'Two Sum',
-          course: 'Introduction to Python',
-          type: 'challenge',
-          language: 'python',
-          status: 'accepted',
-          score: '5/5',
-          submittedAt: '2026-05-14T14:22:00Z',
-          dateLabel: 'Today, 14:22',
-          submission: {
-            status: 'completed',
-            score: 5,
-            totalCases: 5,
-            results: [
-              { id: 1, passed: true, stdin: 'nums=[2,7,11,15]\ntarget=9', expected_output: '[0,1]', actual_output: '[0,1]', exec_time_ms: 12, is_hidden: false },
-              { id: 2, passed: true, stdin: 'nums=[3,2,4]\ntarget=6', expected_output: '[1,2]', actual_output: '[1,2]', exec_time_ms: 10, is_hidden: false },
-              { id: 3, passed: true, stdin: 'nums=[3,3]\ntarget=6', expected_output: '[0,1]', actual_output: '[0,1]', exec_time_ms: 9, is_hidden: false },
-              { id: 4, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 11, is_hidden: true },
-              { id: 5, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 14, is_hidden: true },
-            ]
-          }
-        },
-        {
-          id: 's2',
-          problemId: '104',
-          problemTitle: 'Dictionary Manipulation',
-          course: 'Introduction to Python',
-          type: 'challenge',
-          language: 'python',
-          status: 'wrong',
-          score: '2/5',
-          submittedAt: '2026-05-13T09:10:00Z',
-          dateLabel: 'Yesterday',
-          submission: {
-            status: 'completed',
-            score: 2,
-            totalCases: 5,
-            results: [
-              { id: 1, passed: true, stdin: 'input=...', expected_output: '3', actual_output: '3', exec_time_ms: 14, is_hidden: false },
-              { id: 2, passed: false, stdin: 'input=...', expected_output: '7', actual_output: '5', exec_time_ms: 19, is_hidden: false },
-              { id: 3, passed: false, stdin: 'input=...', expected_output: '9', actual_output: '2', exec_time_ms: 21, is_hidden: false },
-              { id: 4, passed: true, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 8, is_hidden: true },
-              { id: 5, passed: false, stdin: '', expected_output: '', actual_output: '', exec_time_ms: 12, is_hidden: true },
-            ]
-          }
-        },
-        {
-          id: 's3',
-          problemId: '101',
-          problemTitle: 'Hello World',
-          course: 'Introduction to Python',
-          type: 'guided',
-          language: 'python',
-          status: 'error',
-          score: '0/1',
-          submittedAt: '2026-05-12T16:40:00Z',
-          dateLabel: '2 days ago',
-          submission: {
-            status: 'error',
-            score: 0,
-            totalCases: 1,
-            stderr: 'RuntimeError: NameError: name "print" is not defined',
-            results: []
-          }
-        },
-      ]);
-      setLoading(false);
-    }, 500);
-  }, []);
+    if (!user) return;
+
+    // Filter submissions for this student
+    const studentSubs = storeSubmissions.filter(
+      (s) => s.studentEmail.toLowerCase() === user.email.toLowerCase()
+    );
+
+    // Map to required layout format
+    const mapped = studentSubs.map((sub) => {
+      const passedCount = sub.testCases ? sub.testCases.filter((tc) => tc.status === 'passed').length : (sub.status === 'completed' ? 1 : 0);
+      const totalCount = sub.testCases ? sub.testCases.length : 1;
+      const scoreLabel = `${passedCount}/${totalCount}`;
+      const status = sub.status === 'completed' ? (passedCount === totalCount ? 'accepted' : 'wrong') : 'error';
+
+      const dateObj = new Date(sub.submittedAt || Date.now());
+      const dateLabel = dateObj.toLocaleDateString() + ', ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      return {
+        id: sub.id,
+        problemId: sub.problemId,
+        problemTitle: sub.problemTitle || 'Unknown Problem',
+        course: sub.course || 'Introduction to Python',
+        type: sub.type || 'challenge',
+        language: sub.language || 'python',
+        status,
+        score: scoreLabel,
+        submittedAt: sub.submittedAt || new Date().toISOString(),
+        dateLabel,
+        submission: {
+          status: sub.status,
+          score: passedCount,
+          totalCases: totalCount,
+          stderr: sub.error,
+          results: (sub.testCases || []).map((t, idx) => ({
+            id: t.id || idx,
+            passed: t.status === 'passed',
+            stdin: 'Sample stdin',
+            expected_output: 'Expected output',
+            actual_output: t.status === 'passed' ? 'Expected output' : (sub.error || 'Output mismatch'),
+            exec_time_ms: parseInt(t.executionTime) || 12,
+            is_hidden: false
+          }))
+        }
+      };
+    });
+
+    setSubmissions(mapped);
+    setLoading(false);
+  }, [user, storeSubmissions]);
 
   const courses = useMemo(() => {
     return ['all', ...new Set(submissions.map((sub) => sub.course))];
@@ -111,7 +92,7 @@ export function SubmissionsPage() {
   if (loading) return <FullPageSpinner />;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in px-4">
       <div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-1">My Submissions</h1>
         <p className="text-sm text-[var(--text-secondary)]">History of all your code submissions across courses.</p>

@@ -10,7 +10,8 @@ import {
   Settings, 
   Zap,
   Code2,
-  Cpu
+  Cpu,
+  GraduationCap
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../../store/authStore';
@@ -61,7 +62,7 @@ export function CommandPalette() {
       icon: Sun, 
       action: () => {
         const root = document.documentElement;
-        root.classList.remove('theme-dark', 'theme-slate', 'theme-contrast');
+        root.classList.remove('theme-dark', 'theme-slate', 'theme-contrast', 'theme-knust');
         root.classList.add('theme-light');
       } 
     },
@@ -71,8 +72,18 @@ export function CommandPalette() {
       icon: Moon, 
       action: () => {
         const root = document.documentElement;
-        root.classList.remove('theme-light', 'theme-slate', 'theme-contrast');
+        root.classList.remove('theme-light', 'theme-slate', 'theme-contrast', 'theme-knust');
         root.classList.add('theme-dark');
+      } 
+    },
+    { 
+      id: 'knust', 
+      name: 'Set KNUST Mode', 
+      icon: GraduationCap, 
+      action: () => {
+        const root = document.documentElement;
+        root.classList.remove('theme-light', 'theme-dark', 'theme-slate', 'theme-contrast');
+        root.classList.add('theme-knust');
       } 
     },
     { 
