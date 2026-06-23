@@ -16,8 +16,19 @@ export function MyCoursesPage() {
   useEffect(() => {
     if (!user) return;
 
-    // Filter enrolled courses
-    const studentCourses = courses.filter((c) => c.students.includes(user.email));
+    // Auto-enroll student in default courses if they aren't enrolled in any
+    let studentCourses = courses.filter((c) => c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
+    if (studentCourses.length === 0 && user.role === 'student') {
+      courses.forEach(c => {
+        if (c.id === '1' || c.id === '2') {
+          if (!c.students.some(s => s.toLowerCase() === user.email.toLowerCase())) {
+            c.students.push(user.email);
+          }
+        }
+      });
+      useDemoStore.getState().syncToStorage();
+      studentCourses = courses.filter((c) => c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
+    }
 
     // Get completed problem submissions
     const completedProblems = new Set(

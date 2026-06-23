@@ -30,7 +30,20 @@ export function StudentDashboard() {
   useEffect(() => {
     if (!user) return;
 
-    const enrolled = courses.filter(c => c.students.includes(user.email));
+    // Auto-enroll student in default courses if they aren't enrolled in any
+    let enrolled = courses.filter(c => c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
+    if (enrolled.length === 0 && user.role === 'student') {
+      courses.forEach(c => {
+        if (c.id === '1' || c.id === '2') {
+          if (!c.students.some(s => s.toLowerCase() === user.email.toLowerCase())) {
+            c.students.push(user.email);
+          }
+        }
+      });
+      useDemoStore.getState().syncToStorage();
+      enrolled = courses.filter(c => c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
+    }
+
     const enrolledCourseIds = enrolled.map(c => c.id);
     const studentAssessments = assessments.filter(a => enrolledCourseIds.includes(a.courseId));
 

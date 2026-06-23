@@ -7,7 +7,7 @@ import useAuthStore from '../../store/authStore';
 import { useDemoStore } from '../../store/demoStore';
 
 export function CourseDetailPage() {
-  const { id } = useParams();
+  const { courseId } = useParams();
   const user = useAuthStore((state) => state.user);
   const { courses, problems, assessments, submissions } = useDemoStore();
   const [course, setCourse] = useState(null);
@@ -15,7 +15,7 @@ export function CourseDetailPage() {
 
   useEffect(() => {
     if (!user) return;
-    const foundCourse = courses.find((c) => c.id === id);
+    const foundCourse = courses.find((c) => c.id === courseId);
     if (!foundCourse) {
       setCourse(null);
       setLoading(false);
@@ -62,7 +62,7 @@ export function CourseDetailPage() {
 
     // Filter assessments for this course
     const courseAssessments = assessments
-      .filter((a) => a.courseId === id)
+      .filter((a) => a.courseId === courseId)
       .map((a) => {
         const now = Date.now();
         const start = new Date(a.startsAt).getTime();
@@ -104,7 +104,7 @@ export function CourseDetailPage() {
       assessments: courseAssessments
     });
     setLoading(false);
-  }, [id, courses, problems, assessments, submissions, user]);
+  }, [courseId, courses, problems, assessments, submissions, user]);
 
   const groupedProblems = useMemo(() => {
     if (!course) return { guided: [], challenge: [] };
