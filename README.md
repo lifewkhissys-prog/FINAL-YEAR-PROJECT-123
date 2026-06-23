@@ -1,16 +1,27 @@
-# React + Vite
+# DevLab — AI-Powered Online Assessment System for Universities
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+DevLab is an interactive, curriculum-aligned online programming assessment and learning platform designed for universities. It provides two distinct learning/testing modes: **Guided Mode** (scenario-based inline coding walkthroughs) and **Challenge Mode** (competitive programming assessments).
 
-Currently, two official plugins are available:
+This repository contains the high-fidelity frontend prototype built with React, Tailwind CSS, Monaco Editor, Zustand, and Framer Motion.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Documentation & Guides
 
-## React Compiler
+To understand the project and run a high-fidelity demonstration, please refer to the following documents:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+*   **[Demo Guide (DEMO.md)](DEMO.md)**: Detailed step-by-step instructions for running the project, logging in as Lecturer/Student, and executing various workflows (course creation, timed assessments, challenge & guided mode editors, grading).
+*   **[Project Scope Document (devlab_guide.md)](devlab_guide.md)**: Details on the target project architecture, database models, Docker sandboxing execution pipelines, and timelines.
+*   **[Frontend Guides (frontend_guide/)](frontend_guide/devlab_frontend_index.md)**: Reference specifications for implementing or auditing the frontend components (e.g. Monaco wrapper, countdown timer, private routing).
+*   **[Backend Guides (backend_guide/)](backend_guide/devlab_backend_index.md)**: Architecture documents detailing the submission pipeline, Docker containers, SQLite executor, and auth protocols.
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+2. **Run Dev Server**:
+   ```bash
+   npm run dev
+   ```
+3. Open `http://localhost:5173/` in your browser.
+
