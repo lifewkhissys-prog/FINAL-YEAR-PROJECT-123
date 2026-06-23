@@ -144,18 +144,29 @@ export function GuidedPage({ problemId, initialProblem }) {
 
     for (const index of editorIndices) {
       const block = problem.blocks[index];
-      if (!solvedBlockIds.includes(block.id)) return index;
+      if (!solvedBlockIds.includes(String(block.id))) return index;
     }
 
-    return editorIndices.length ? editorIndices[editorIndices.length - 1] : -1;
+    return -1; // Everything solved
   }, [problem, solvedBlockIds]);
+
+  const prevUnsolvedIndexRef = useRef(-2); // Start at -2 to differentiate from -1 (everything solved)
 
   useEffect(() => {
     if (!problem?.blocks?.length) return;
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+    
+    // Only scroll if firstUnsolvedIndex has changed and it is not the initial load
+    if (prevUnsolvedIndexRef.current !== -2 && firstUnsolvedIndex > prevUnsolvedIndexRef.current) {
+      const element = document.getElementById(`block-${firstUnsolvedIndex}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (bottomRef.current) {
+        bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
     }
-  }, [problem, firstUnsolvedIndex]);
+    
+    prevUnsolvedIndexRef.current = firstUnsolvedIndex;
+  }, [firstUnsolvedIndex, problem]);
 
   const totalSections = editorBlocks.length;
   const solvedCount = solvedBlockIds.length;
@@ -192,11 +203,12 @@ export function GuidedPage({ problemId, initialProblem }) {
     }
   }, [allSolved, problem, user, courses, submissions, addSubmission, codeValues]);
 
-  const handleRun = (blockId, expectedOutput) => {
+  const handleRun = (blockId, expectedOutput, starterCode) => {
     setIsEvaluating(true);
 
     setTimeout(() => {
-      const code = (codeValues[blockId] || '').trim();
+      const currentCode = codeValues[blockId] !== undefined ? codeValues[blockId] : starterCode;
+      const code = (currentCode || '').trim();
       const isCorrect = code.length > 0;
 
       setResults((prev) => ({
@@ -253,9 +265,12 @@ export function GuidedPage({ problemId, initialProblem }) {
 
       <div className="space-y-12 pb-32">
         {problem.blocks.map((block, index) => {
+          const isLocked = firstUnsolvedIndex >= 0 && index > firstUnsolvedIndex;
+
           if (block.type === 'narrative') {
+            if (isLocked) return null; // Hide future narrative blocks
             return (
-              <div key={index} className="prose prose-invert prose-p:text-[var(--text-secondary)] prose-p:leading-relaxed max-w-none animate-slide-up">
+              <div key={index} id={`block-${index}`} className="prose prose-invert prose-p:text-[var(--text-secondary)] prose-p:leading-relaxed max-w-none animate-slide-up">
                 <ReactMarkdown>{block.content}</ReactMarkdown>
               </div>
             );
@@ -264,10 +279,9 @@ export function GuidedPage({ problemId, initialProblem }) {
           if (block.type === 'editor') {
             const result = results[block.id];
             const isSolved = result?.passed;
-            const isLocked = firstUnsolvedIndex >= 0 && index > firstUnsolvedIndex;
 
             return (
-              <div key={index} className="relative">
+              <div key={index} id={`block-${index}`} className="relative">
                 <div className={`glass-sm overflow-hidden transition-all duration-500 animate-slide-up ${isLocked ? 'opacity-70' : ''}`}>
                   <div className="bg-dark-800 px-4 py-2 border-b border-default flex items-center justify-between">
                     <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Editor</span>
@@ -290,7 +304,7 @@ export function GuidedPage({ problemId, initialProblem }) {
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
                         <button
-                          onClick={() => handleRun(block.id, block.expected_output)}
+                          onClick={() => handleRun(block.id, block.expected_output, block.starter_code)}
                           disabled={isEvaluating || isLocked || isSolved}
                           className="btn-primary py-2 px-6"
                         >
