@@ -110,7 +110,8 @@ export function CourseDetailPage() {
     if (!course) return { guided: [], challenge: [] };
     return course.problems.reduce(
       (acc, problem) => {
-        acc[problem.type].push(problem);
+        const type = problem.type === 'guided' ? 'guided' : 'challenge';
+        acc[type].push(problem);
         return acc;
       },
       { guided: [], challenge: [] }

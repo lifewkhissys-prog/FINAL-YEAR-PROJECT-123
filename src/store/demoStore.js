@@ -94,6 +94,64 @@ Given a string \`s\`, return \`true\` if it is a palindrome, or \`false\` otherw
       { id: 3, type: 'text', content: '### Find the Witnesses\nLet\'s check the address details for the first witness: lives in the "last house" on Northwestern Dr.' },
       { id: 4, type: 'code', starterCode: "SELECT * \nFROM person \nWHERE address_street_name = 'Northwestern Dr' \nORDER BY address_number DESC \nLIMIT 1;", expectedOutput: "id: 14887 | name: Morty Schapiro | license_id: 118009 | address_number: 4919\n", hint: 'Order by address_number DESC to find the last house.' }
     ]
+  },
+  '105': {
+    id: '105',
+    title: 'CSS Box Model',
+    type: 'mcq',
+    interactionMode: 'direct',
+    difficulty: 'easy',
+    description: 'Which CSS property controls the space inside the border of an element?',
+    choices: [
+      { text: 'margin', isCorrect: false },
+      { text: 'padding', isCorrect: true },
+      { text: 'border', isCorrect: false },
+      { text: 'spacing', isCorrect: false }
+    ],
+    explanation: 'Padding is the space inside the border, whereas margin is the space outside the border.',
+    points: 10
+  },
+  '106': {
+    id: '106',
+    title: 'Algorithm Complexity Analysis',
+    type: 'short_answer',
+    interactionMode: 'guided',
+    difficulty: 'medium',
+    steps: [
+      {
+        prompt: 'What is the time complexity of searching in a balanced binary search tree in the worst case?',
+        gradingMode: 'keyword_match',
+        keywords: ['O(log n)', 'logarithmic', 'log n'],
+        showPrevAnswer: false
+      },
+      {
+        prompt: 'Why is it O(log n)? Explain the division of search space.',
+        gradingMode: 'manual',
+        keywords: [],
+        showPrevAnswer: true
+      }
+    ],
+    points: 20
+  },
+  '107': {
+    id: '107',
+    title: 'SQL Mystery Hunt',
+    type: 'sql_problem',
+    interactionMode: 'exploratory',
+    difficulty: 'hard',
+    description: 'A valuable artifact was stolen from the museum. Find the thief using the database.',
+    schemaSql: 'CREATE TABLE logs (id INT, staff_id INT, room VARCHAR(50), timestamp TIMESTAMP);\nCREATE TABLE staff (id INT, name VARCHAR(50), role VARCHAR(50));',
+    seedSql: "INSERT INTO staff VALUES (1, 'Alice Smith', 'Curator'), (2, 'Bob Johnson', 'Janitor'), (3, 'Charlie Brown', 'Security');\nINSERT INTO logs VALUES (1, 2, 'Exhibition Hall', '2018-01-15 22:15:00'), (2, 1, 'Exhibition Hall', '2018-01-15 14:00:00');",
+    finalAnswerSchema: [
+      { field: 'suspect_name', label: 'Suspect Name' },
+      { field: 'time_of_theft', label: 'Time of Theft' }
+    ],
+    finalAnswerKey: {
+      suspect_name: 'Bob Johnson',
+      time_of_theft: '22:15'
+    },
+    solutionQuery: "SELECT s.name, l.timestamp FROM logs l JOIN staff s ON l.staff_id = s.id WHERE l.room = 'Exhibition Hall' AND l.timestamp LIKE '%22:15%';",
+    points: 30
   }
 };
 
@@ -421,6 +479,40 @@ export const useDemoStore = create((set, get) => ({
 
     get().syncToStorage();
     return updatedProblem;
+  },
+
+  linkProblemsToAssessment: (assessmentId, problemIds) => {
+    set((state) => ({
+      assessments: state.assessments.map((a) => {
+        if (a.id === assessmentId) {
+          const currentList = a.problemIds || [];
+          const newList = [...currentList];
+          problemIds.forEach((pId) => {
+            if (!newList.includes(pId)) {
+              newList.push(pId);
+            }
+          });
+          return { ...a, problemIds: newList };
+        }
+        return a;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  unlinkProblemFromAssessment: (assessmentId, problemId) => {
+    set((state) => ({
+      assessments: state.assessments.map((a) => {
+        if (a.id === assessmentId) {
+          return {
+            ...a,
+            problemIds: (a.problemIds || []).filter((id) => id !== problemId)
+          };
+        }
+        return a;
+      })
+    }));
+    get().syncToStorage();
   },
 
   deleteProblem: (problemId) => {

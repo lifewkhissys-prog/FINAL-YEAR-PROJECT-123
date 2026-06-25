@@ -200,7 +200,12 @@ export function AssessmentCreatePage() {
            <div className="glass p-6">
              <div className="flex items-center justify-between mb-4 pb-2 border-b border-default">
                <h2 className="text-xl font-semibold text-[var(--text-primary)]">Selected Problems</h2>
-               <span className="text-xs text-[var(--text-muted)]">{selectedProblemIds.length} selected</span>
+               <div className="flex items-center gap-3">
+                 <Link to="/lecturer/problems/new" className="text-xs text-brand-blue hover:underline">
+                   + Create Custom
+                 </Link>
+                 <span className="text-xs text-[var(--text-muted)]">{selectedProblemIds.length} selected</span>
+               </div>
              </div>
 
              <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">

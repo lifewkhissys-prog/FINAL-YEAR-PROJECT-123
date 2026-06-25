@@ -31,6 +31,7 @@ const CourseManagePage = React.lazy(() => import('../pages/lecturer/CourseManage
 const LecturerAssessmentsPage = React.lazy(() => import('../pages/lecturer/LecturerAssessmentsPage').then(module => ({ default: module.LecturerAssessmentsPage })));
 const AssessmentDetailPage = React.lazy(() => import('../pages/lecturer/AssessmentDetailPage').then(module => ({ default: module.AssessmentDetailPage })));
 const ProblemAuthorPage = React.lazy(() => import('../pages/lecturer/ProblemAuthorPage').then(module => ({ default: module.ProblemAuthorPage })));
+const ProblemBankPage = React.lazy(() => import('../pages/lecturer/ProblemBankPage').then(module => ({ default: module.ProblemBankPage })));
 const AssessmentCreatePage = React.lazy(() => import('../pages/lecturer/AssessmentCreatePage').then(module => ({ default: module.AssessmentCreatePage })));
 const GradebookPage = React.lazy(() => import('../pages/lecturer/GradebookPage').then(module => ({ default: module.GradebookPage })));
 const StudentAssessmentDetailPage = React.lazy(() => import('../pages/lecturer/StudentAssessmentDetailPage').then(module => ({ default: module.StudentAssessmentDetailPage })));
@@ -119,6 +120,9 @@ export function AppRouter() {
               <Route path="/lecturer/assessments/:assessmentId/gradebook" element={<ProtectedRoute allowedRole="lecturer"><GradebookPage /></ProtectedRoute>} />
               <Route path="/lecturer/assessments/:assessmentId/problems/new" element={<ProtectedRoute allowedRole="lecturer"><ProblemAuthorPage /></ProtectedRoute>} />
               <Route path="/lecturer/assessments/:assessmentId/problems/:problemId/edit" element={<ProtectedRoute allowedRole="lecturer"><ProblemAuthorPage /></ProtectedRoute>} />
+              <Route path="/lecturer/problems" element={<ProtectedRoute allowedRole="lecturer"><ProblemBankPage /></ProtectedRoute>} />
+              <Route path="/lecturer/problems/new" element={<ProtectedRoute allowedRole="lecturer"><ProblemAuthorPage /></ProtectedRoute>} />
+              <Route path="/lecturer/problems/:problemId/edit" element={<ProtectedRoute allowedRole="lecturer"><ProblemAuthorPage /></ProtectedRoute>} />
               <Route path="/lecturer/assessments/:assessmentId/students/:userId" element={<ProtectedRoute allowedRole="lecturer"><StudentAssessmentDetailPage /></ProtectedRoute>} />
           </Route>
 

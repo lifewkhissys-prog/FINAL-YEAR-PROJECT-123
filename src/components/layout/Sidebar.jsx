@@ -28,6 +28,7 @@ export function Sidebar() {
   const lecturerLinks = [
     { to: '/lecturer/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/lecturer/courses', icon: BookOpen, label: 'My Courses' },
+    { to: '/lecturer/problems', icon: Code2, label: 'Problem Bank' },
     { to: '/lecturer/assessments', icon: Library, label: 'Assessments' },
   ];
 
