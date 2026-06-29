@@ -71,7 +71,7 @@ const DashboardRouter = () => {
 
 const HomeRedirect = () => {
   const { isAuthenticated, user } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!isAuthenticated) return <Navigate to="/landing" />;
   return user?.role === 'lecturer' ? <Navigate to="/lecturer/dashboard" /> : <Navigate to="/student/dashboard" />;
 };
 
