@@ -9,7 +9,50 @@ const INITIAL_COURSES = [
     description: 'Learn the fundamentals of Python programming, from syntax to control flows.',
     students: ['student@uni.edu', 'kelvin@uni.edu', 'seidu@uni.edu'],
     assessments: ['a1'],
-    problemIds: ['101', '103']
+    problemIds: ['101', '103'],
+    joinCode: 'PY-101',
+    slides: [
+      {
+        id: 's1',
+        title: 'Lecture 1: Introduction to Python Variables and Types',
+        description: 'Covers variables, syntax structure, basic arithmetic operators, and core datatypes.',
+        programmingLanguage: 'python',
+        fileName: 'lecture_01_intro_python.pdf',
+        uploadedAt: '2026-06-01T10:00:00Z',
+        pages: [
+          {
+            title: 'Welcome to Python',
+            content: 'Python is a high-level, interpreted, general-purpose programming language. Created by Guido van Rossum and first released in 1991. It emphasizes code readability and simplicity.'
+          },
+          {
+            title: 'Variables and Assignment',
+            content: 'In Python, we do not need to declare variable types. Variable declaration is automatic when you assign a value.\n\nExample:\nx = 5\nname = "KNUST"\n\nVariable names must start with a letter or underscore, and are case-sensitive.'
+          },
+          {
+            title: 'Basic Data Types',
+            content: '- Integers: x = 10\n- Floating point numbers: y = 20.5\n- Strings: s = "Hello World"\n- Booleans: active = True\n- Lists: items = [1, 2, 3]'
+          }
+        ]
+      },
+      {
+        id: 's2',
+        title: 'Lecture 2: Control Flow and Conditionals',
+        description: 'Understanding if, elif, else statements and logical operators in Python.',
+        programmingLanguage: 'python',
+        fileName: 'lecture_02_python_control_flow.pdf',
+        uploadedAt: '2026-06-05T10:00:00Z',
+        pages: [
+          {
+            title: 'If Statements',
+            content: 'Python uses indentation to define code blocks instead of curly braces.\n\nExample:\nif x > 0:\n    print("Positive")\nelse:\n    print("Non-positive")'
+          },
+          {
+            title: 'Boolean Operators',
+            content: 'Use `and`, `or`, and `not` keywords for logical operations in conditionals.\n\nExample:\nif x > 0 and x < 10:\n    print("Single digit positive number")'
+          }
+        ]
+      }
+    ]
   },
   {
     id: '2',
@@ -18,7 +61,28 @@ const INITIAL_COURSES = [
     description: 'Master SQL databases, schema design, and complex queries.',
     students: ['student@uni.edu', 'kelvin@uni.edu'],
     assessments: ['a2'],
-    problemIds: ['104']
+    problemIds: ['104'],
+    joinCode: 'DB-201',
+    slides: [
+      {
+        id: 's3',
+        title: 'Lecture 1: Relational Model & SQL Basics',
+        description: 'An overview of the relational databases, tables, keys, and writing basic SELECT queries.',
+        programmingLanguage: 'sql',
+        fileName: 'lecture_01_sql_basics.pdf',
+        uploadedAt: '2026-06-10T09:30:00Z',
+        pages: [
+          {
+            title: 'What is a Relational Database?',
+            content: 'A database structure organized as tables containing columns and rows. Tables represent entities, and relationships are built using Primary Keys and Foreign Keys.'
+          },
+          {
+            title: 'Basic SQL SELECT syntax',
+            content: 'Syntax:\nSELECT column1, column2 FROM table_name WHERE condition;\n\nExample:\nSELECT name, salary FROM employees WHERE department = \'Engineering\';'
+          }
+        ]
+      }
+    ]
   },
   {
     id: '3',
@@ -27,7 +91,9 @@ const INITIAL_COURSES = [
     description: 'Explore stacks, queues, trees, and algorithm optimization.',
     students: ['student@uni.edu', 'seidu@uni.edu'],
     assessments: ['a3'],
-    problemIds: []
+    problemIds: [],
+    joinCode: 'DS-301',
+    slides: []
   }
 ];
 
@@ -307,7 +373,76 @@ const saveStored = (key, val) => {
 };
 
 export const useDemoStore = create((set, get) => ({
-  courses: getStored('devlab_demo_courses', INITIAL_COURSES),
+  courses: getStored('devlab_demo_courses', INITIAL_COURSES).map((c) => {
+    // 1. Backfill joinCode
+    let code = c.joinCode;
+    if (!code) {
+      if (c.id === '1') code = 'PY-101';
+      else if (c.id === '2') code = 'DB-201';
+      else if (c.id === '3') code = 'DS-301';
+      else code = Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+
+    // 2. Backfill modules
+    let mods = c.modules;
+    if (!mods || mods.length === 0) {
+      if (c.id === '1') {
+        mods = [
+          {
+            id: 'm1',
+            title: 'Variables and Data Types',
+            description: 'Understand variables, strings, numbers, and basic expressions in Python.',
+            slideIds: ['s1'],
+            problemIds: ['101'],
+            assessmentIds: []
+          },
+          {
+            id: 'm2',
+            title: 'Control Flow and Loops',
+            description: 'Master logical branches and loop iteration controls.',
+            slideIds: ['s2'],
+            problemIds: ['103'],
+            assessmentIds: ['a1']
+          }
+        ];
+      } else if (c.id === '2') {
+        mods = [
+          {
+            id: 'm3',
+            title: 'Relational Model & SQL Basics',
+            description: 'Learn SQL databases, structures, primary/foreign keys, and basic SELECT queries.',
+            slideIds: ['s3'],
+            problemIds: ['104'],
+            assessmentIds: ['a2']
+          }
+        ];
+      } else if (c.id === '3') {
+        mods = [
+          {
+            id: 'm4',
+            title: 'Linear Data Structures',
+            description: 'Learn arrays, stacks, queues, and linked lists.',
+            slideIds: [],
+            problemIds: [],
+            assessmentIds: ['a3']
+          }
+        ];
+      } else {
+        mods = [
+          {
+            id: 'm-' + Math.random().toString(36).substring(2, 7),
+            title: 'General Resources',
+            description: 'Course lectures and practice problems.',
+            slideIds: c.slides ? c.slides.map(s => s.id) : [],
+            problemIds: c.problemIds || [],
+            assessmentIds: c.assessments || []
+          }
+        ];
+      }
+    }
+
+    return { ...c, joinCode: code, modules: mods };
+  }),
   problems: getStored('devlab_demo_problems', INITIAL_PROBLEMS),
   assessments: getStored('devlab_demo_assessments', INITIAL_ASSESSMENTS),
   submissions: getStored('devlab_demo_submissions', INITIAL_SUBMISSIONS),
@@ -325,12 +460,14 @@ export const useDemoStore = create((set, get) => ({
 
   // Courses Actions
   createCourse: (courseData) => {
+    const randomCode = 'KN-' + Math.random().toString(36).substring(2, 8).toUpperCase();
     const newCourse = {
       ...courseData,
       id: Math.random().toString(36).substr(2, 9),
-      students: courseData.students || [],
+      students: courseData.students || [], // Empty by default, allows self-enrollment/join codes
       assessments: courseData.assessments || [],
-      problemIds: courseData.problemIds || []
+      problemIds: courseData.problemIds || [],
+      joinCode: courseData.joinCode || randomCode
     };
     set((state) => ({ courses: [...state.courses, newCourse] }));
     get().syncToStorage();
@@ -376,11 +513,54 @@ export const useDemoStore = create((set, get) => ({
     get().syncToStorage();
   },
 
+  enrollStudentWithCode: (joinCode, email) => {
+    const trimmedCode = joinCode.trim().toUpperCase();
+    const course = get().courses.find(c => c.joinCode.toUpperCase() === trimmedCode);
+    if (!course) {
+      throw new Error("No course found with that enrollment code.");
+    }
+
+    // Add student to system if new
+    let students = [...get().studentsList];
+    if (!students.some((s) => s.email.toLowerCase() === email.toLowerCase())) {
+      const name = email.split('@')[0].replace(/[^a-zA-Z]/g, ' ');
+      const capitalized = name.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      students.push({ email, name: capitalized || 'External Student' });
+    }
+
+    set((state) => ({
+      studentsList: students,
+      courses: state.courses.map((c) => {
+        if (c.joinCode.toUpperCase() === trimmedCode) {
+          const enrolled = c.students || [];
+          if (!enrolled.includes(email)) {
+            return { ...c, students: [...enrolled, email] };
+          }
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+    return course;
+  },
+
+  unenrollStudent: (courseId, email) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          return { ...c, students: (c.students || []).filter((s) => s.toLowerCase() !== email.toLowerCase()) };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
   removeStudent: (courseId, email) => {
     set((state) => ({
       courses: state.courses.map((c) => {
         if (c.id === courseId) {
-          return { ...c, students: (c.students || []).filter((s) => s !== email) };
+          return { ...c, students: (c.students || []).filter((s) => s.toLowerCase() !== email.toLowerCase()) };
         }
         return c;
       })
@@ -532,6 +712,351 @@ export const useDemoStore = create((set, get) => ({
         }))
       };
     });
+    get().syncToStorage();
+  },
+
+  linkProblemsToCourse: (courseId, problemIds) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentList = c.problemIds || [];
+          const newList = [...currentList];
+          problemIds.forEach((pId) => {
+            if (!newList.includes(pId)) {
+              newList.push(pId);
+            }
+          });
+
+          // Also auto-assign to the first module if exists
+          const mods = c.modules || [];
+          let updatedMods = [...mods];
+          if (updatedMods.length > 0) {
+            const firstMod = updatedMods[0];
+            const mProblems = firstMod.problemIds || [];
+            const newMProblems = [...mProblems];
+            problemIds.forEach((pId) => {
+              if (!newMProblems.includes(pId)) {
+                newMProblems.push(pId);
+              }
+            });
+            updatedMods[0] = { ...firstMod, problemIds: newMProblems };
+          }
+
+          return { ...c, problemIds: newList, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  unlinkProblemFromCourse: (courseId, problemId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          // Remove from course and all modules
+          const currentMods = c.modules || [];
+          const updatedMods = currentMods.map(m => ({
+            ...m,
+            problemIds: (m.problemIds || []).filter(id => id !== problemId)
+          }));
+          return {
+            ...c,
+            problemIds: (c.problemIds || []).filter((id) => id !== problemId),
+            modules: updatedMods
+          };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  addSlideToCourse: (courseId, slide) => {
+    const newSlide = {
+      ...slide,
+      id: 's-' + Math.random().toString(36).substring(2, 7),
+      uploadedAt: new Date().toISOString()
+    };
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentSlides = c.slides || [];
+          const updatedSlides = [...currentSlides, newSlide];
+
+          // Auto-assign to the first module
+          const mods = c.modules || [];
+          let updatedMods = [...mods];
+          if (updatedMods.length > 0) {
+            const firstMod = updatedMods[0];
+            const mSlides = firstMod.slideIds || [];
+            updatedMods[0] = { ...firstMod, slideIds: [...mSlides, newSlide.id] };
+          }
+
+          return { ...c, slides: updatedSlides, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+    return newSlide;
+  },
+
+  removeSlideFromCourse: (courseId, slideId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentSlides = c.slides || [];
+          const currentMods = c.modules || [];
+          return {
+            ...c,
+            slides: currentSlides.filter((s) => s.id !== slideId),
+            modules: currentMods.map(m => ({
+              ...m,
+              slideIds: (m.slideIds || []).filter(id => id !== slideId)
+            }))
+          };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  updateSlideInCourse: (courseId, slideId, slideData) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentSlides = c.slides || [];
+          return {
+            ...c,
+            slides: currentSlides.map((s) => s.id === slideId ? { ...s, ...slideData } : s)
+          };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  // Module/Mini-course actions
+  createModule: (courseId, moduleData) => {
+    const newModule = {
+      id: 'm-' + Math.random().toString(36).substring(2, 7),
+      title: moduleData.title,
+      description: moduleData.description || '',
+      slideIds: [],
+      problemIds: [],
+      assessmentIds: []
+    };
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentMods = c.modules || [];
+          return { ...c, modules: [...currentMods, newModule] };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+    return newModule;
+  },
+
+  updateModule: (courseId, moduleId, moduleData) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentMods = c.modules || [];
+          return {
+            ...c,
+            modules: currentMods.map((m) => m.id === moduleId ? { ...m, ...moduleData } : m)
+          };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  deleteModule: (courseId, moduleId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentMods = c.modules || [];
+          return {
+            ...c,
+            modules: currentMods.filter((m) => m.id !== moduleId)
+          };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  linkProblemToModule: (courseId, moduleId, problemId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          // Add to global course list
+          const cProblems = c.problemIds || [];
+          const updatedCProblems = cProblems.includes(problemId) ? cProblems : [...cProblems, problemId];
+          
+          // Add to module list
+          const currentMods = c.modules || [];
+          const updatedMods = currentMods.map((m) => {
+            if (m.id === moduleId) {
+              const mProblems = m.problemIds || [];
+              return {
+                ...m,
+                problemIds: mProblems.includes(problemId) ? mProblems : [...mProblems, problemId]
+              };
+            }
+            return m;
+          });
+          return { ...c, problemIds: updatedCProblems, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  unlinkProblemFromModule: (courseId, moduleId, problemId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          // Remove from module
+          const currentMods = c.modules || [];
+          const updatedMods = currentMods.map((m) => {
+            if (m.id === moduleId) {
+              return {
+                ...m,
+                problemIds: (m.problemIds || []).filter(id => id !== problemId)
+              };
+            }
+            return m;
+          });
+
+          // Check if this problem is still used in other modules. If not, remove from course global list too
+          const stillUsed = updatedMods.some(m => m.problemIds && m.problemIds.includes(problemId));
+          const updatedCProblems = stillUsed 
+            ? (c.problemIds || []) 
+            : (c.problemIds || []).filter(id => id !== problemId);
+
+          return { ...c, problemIds: updatedCProblems, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  addSlideToModule: (courseId, moduleId, slide) => {
+    const newSlide = {
+      ...slide,
+      id: 's-' + Math.random().toString(36).substring(2, 7),
+      uploadedAt: new Date().toISOString()
+    };
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          // Add to global slides list
+          const cSlides = c.slides || [];
+          const updatedCSlides = [...cSlides, newSlide];
+
+          // Add to module slides list
+          const currentMods = c.modules || [];
+          const updatedMods = currentMods.map((m) => {
+            if (m.id === moduleId) {
+              const mSlides = m.slideIds || [];
+              return { ...m, slideIds: [...mSlides, newSlide.id] };
+            }
+            return m;
+          });
+
+          return { ...c, slides: updatedCSlides, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+    return newSlide;
+  },
+
+  removeSlideFromModule: (courseId, moduleId, slideId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          // Remove from global slides list
+          const updatedCSlides = (c.slides || []).filter(s => s.id !== slideId);
+
+          // Remove from module
+          const currentMods = c.modules || [];
+          const updatedMods = currentMods.map((m) => {
+            if (m.id === moduleId) {
+              return {
+                ...m,
+                slideIds: (m.slideIds || []).filter(id => id !== slideId)
+              };
+            }
+            return m;
+          });
+
+          return { ...c, slides: updatedCSlides, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  updateSlideInModule: (courseId, moduleId, slideId, slideData) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          const currentSlides = c.slides || [];
+          return {
+            ...c,
+            slides: currentSlides.map((s) => s.id === slideId ? { ...s, ...slideData } : s)
+          };
+        }
+        return c;
+      })
+    }));
+    get().syncToStorage();
+  },
+
+  assignAssessmentToModule: (courseId, moduleId, assessmentId) => {
+    set((state) => ({
+      courses: state.courses.map((c) => {
+        if (c.id === courseId) {
+          // Ensure assessment is in course list
+          const cAssessments = c.assessments || [];
+          const updatedCAssessments = cAssessments.includes(assessmentId) ? cAssessments : [...cAssessments, assessmentId];
+
+          // Link to this module, and remove from any other modules in this course
+          const currentMods = c.modules || [];
+          const updatedMods = currentMods.map((m) => {
+            const currentAIds = m.assessmentIds || [];
+            if (m.id === moduleId) {
+              return {
+                ...m,
+                assessmentIds: currentAIds.includes(assessmentId) ? currentAIds : [...currentAIds, assessmentId]
+              };
+            } else {
+              return {
+                ...m,
+                assessmentIds: currentAIds.filter(id => id !== assessmentId)
+              };
+            }
+          });
+
+          return { ...c, assessments: updatedCAssessments, modules: updatedMods };
+        }
+        return c;
+      })
+    }));
     get().syncToStorage();
   },
 

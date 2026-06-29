@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 
 export function CourseCreatePage() {
   const navigate = useNavigate();
-  const { addCourse } = useDemoStore();
+  const { createCourse } = useDemoStore();
   
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState('python');
@@ -19,7 +19,7 @@ export function CourseCreatePage() {
       return;
     }
 
-    addCourse({
+    createCourse({
       title: title.trim(),
       language,
       description: description.trim(),

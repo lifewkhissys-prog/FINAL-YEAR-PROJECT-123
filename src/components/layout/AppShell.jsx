@@ -32,7 +32,7 @@ export function AppShell() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         {!hideSidebar && <Topbar onMenuClick={() => setSidebarOpen(true)} />}
         <main className={`flex-1 ${hideSidebar ? 'overflow-hidden p-0' : 'overflow-y-auto p-4 md:p-6 lg:p-8'}`}>
           <div className={hideSidebar ? 'h-full' : 'max-w-7xl mx-auto'}>

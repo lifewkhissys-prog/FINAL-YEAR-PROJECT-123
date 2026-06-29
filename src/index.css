@@ -54,6 +54,18 @@
     @apply w-full rounded-md border border-default bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)];
   }
 
+  .select {
+    @apply w-full rounded-md border border-default px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent-muted)] cursor-pointer;
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    color-scheme: dark;
+  }
+
+  .select option {
+    background-color: var(--bg-surface) !important;
+    color: var(--text-primary) !important;
+  }
+
   .btn-primary {
     @apply inline-flex items-center gap-2 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--btn-text)] transition hover:bg-[var(--accent-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-muted)] disabled:cursor-not-allowed disabled:opacity-60;
   }

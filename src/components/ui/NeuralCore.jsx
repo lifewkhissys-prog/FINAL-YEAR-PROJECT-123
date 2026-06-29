@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence, useDragControls, useMotionValue, animate } from 'framer-motion';
 import { Bot, Cpu, Sparkles, X, ChevronRight, Brain } from 'lucide-react';
 
 const DIAGNOSTICS = [
@@ -14,6 +14,88 @@ const DIAGNOSTICS = [
 export function NeuralCore() {
   const [isOpen, setIsOpen] = useState(false);
   const [currentDiagnostic, setCurrentDiagnostic] = useState(0);
+  const dragControls = useDragControls();
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const [dragConstraints, setDragConstraints] = useState({ left: -800, right: 0, top: -600, bottom: 0 });
+  const isDragging = useRef(false);
+
+  const handleDragStart = () => {
+    isDragging.current = true;
+  };
+
+  const handleDragEnd = () => {
+    setTimeout(() => {
+      isDragging.current = false;
+    }, 100);
+  };
+
+  const handleClick = () => {
+    if (!isDragging.current) {
+      setIsOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    const padding = 32; // bottom-8 right-8 layout margin is 32px
+    const margin = 16;  // keep 16px safety gap from screen boundary
+
+    const updateConstraints = () => {
+      if (isOpen) {
+        // Panel: 320px wide, ~410px tall
+        setDragConstraints({
+          left: -window.innerWidth + 320 + padding + margin,
+          right: margin,
+          top: -window.innerHeight + 410 + padding + margin,
+          bottom: margin,
+        });
+      } else {
+        // Button: 56px wide, 56px tall
+        setDragConstraints({
+          left: -window.innerWidth + 56 + padding + margin,
+          right: margin,
+          top: -window.innerHeight + 56 + padding + margin,
+          bottom: margin,
+        });
+      }
+    };
+    updateConstraints();
+
+    // Check if current position is outside new constraints and animate it back
+    const currentX = x.get();
+    const currentY = y.get();
+
+    let minX, maxX, minY, maxY;
+    if (isOpen) {
+      minX = -window.innerWidth + 320 + padding + margin;
+      maxX = margin;
+      minY = -window.innerHeight + 410 + padding + margin;
+      maxY = margin;
+    } else {
+      minX = -window.innerWidth + 56 + padding + margin;
+      maxX = margin;
+      minY = -window.innerHeight + 56 + padding + margin;
+      maxY = margin;
+    }
+
+    let targetX = currentX;
+    let targetY = currentY;
+
+    if (currentX < minX) targetX = minX;
+    if (currentX > maxX) targetX = maxX;
+    if (currentY < minY) targetY = minY;
+    if (currentY > maxY) targetY = maxY;
+
+    if (targetX !== currentX) {
+      animate(x, targetX, { type: 'spring', stiffness: 300, damping: 30 });
+    }
+    if (targetY !== currentY) {
+      animate(y, targetY, { type: 'spring', stiffness: 300, damping: 30 });
+    }
+
+    window.addEventListener('resize', updateConstraints);
+    return () => window.removeEventListener('resize', updateConstraints);
+  }, [isOpen, x, y]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -23,15 +105,27 @@ export function NeuralCore() {
   }, []);
 
   return (
-    <div className="fixed bottom-8 right-8 z-[100]">
+    <motion.div 
+      drag 
+      dragListener={false} 
+      dragControls={dragControls}
+      dragMomentum={false} 
+      dragConstraints={dragConstraints}
+      dragElastic={0.1}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      style={{ x, y }}
+      className="fixed bottom-8 right-8 z-[100] touch-none select-none"
+    >
       <AnimatePresence>
         {!isOpen ? (
           <motion.button
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
-            onClick={() => setIsOpen(true)}
-            className="w-14 h-14 bg-brand-blue rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.6)] group relative"
+            onClick={handleClick}
+            onPointerDown={(e) => dragControls.start(e)}
+            className="w-14 h-14 bg-brand-blue rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.6)] group relative cursor-grab active:cursor-grabbing"
           >
             <div className="absolute inset-0 rounded-full animate-ping bg-brand-blue/40"></div>
             <Bot className="text-white group-hover:scale-110 transition-transform" />
@@ -41,21 +135,31 @@ export function NeuralCore() {
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="w-80 bg-[#0F0F0F] border border-brand-blue/30 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] overflow-hidden"
+            className="w-80 bg-[#0F0F0F] border border-brand-blue/30 rounded-2xl shadow-[0_0_100px_rgba(0,0,0,0.8)] overflow-hidden cursor-default"
           >
             {/* Header */}
-            <div className="bg-brand-blue/10 px-4 py-3 flex items-center justify-between border-b border-brand-blue/20">
-              <div className="flex items-center gap-2">
+            <div 
+              onPointerDown={(e) => dragControls.start(e)}
+              className="bg-brand-blue/10 px-4 py-3 flex items-center justify-between border-b border-brand-blue/20 cursor-grab active:cursor-grabbing"
+            >
+              <div className="flex items-center gap-2 select-none pointer-events-none">
                  <Sparkles size={14} className="text-brand-blue" />
                  <span className="text-[10px] font-mono font-bold text-white uppercase tracking-widest">Neural Core AI</span>
               </div>
-              <button onClick={() => setIsOpen(false)} className="text-white/40 hover:text-white transition-colors">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsOpen(false);
+                }} 
+                onPointerDown={(e) => e.stopPropagation()}
+                className="text-white/40 hover:text-white transition-colors p-1 hover:bg-white/5 rounded"
+              >
                  <X size={14} />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-5 space-y-6">
+            <div className="p-5 space-y-6 select-text">
                <div className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-lg bg-brand-blue/10 flex items-center justify-center shrink-0">
                      <Brain className="text-brand-blue animate-pulse" />
@@ -104,6 +208,6 @@ export function NeuralCore() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

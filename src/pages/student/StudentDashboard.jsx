@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { BookOpen, CalendarClock, Clock, GraduationCap, ArrowRight } from 'lucide-react';
+import { BookOpen, CalendarClock, Clock, GraduationCap, ArrowRight, Code } from 'lucide-react';
 import { FullPageSpinner } from '../../components/ui/Spinner';
 import { StatusBadge, TechBadge, LangBadge } from '../../components/ui/Badge';
 import useAuthStore from '../../store/authStore';
 import { useDemoStore } from '../../store/demoStore';
+import { Modal } from '../../components/ui/Modal';
+import toast from 'react-hot-toast';
 
 // Animation variants
 const containerVariants = {
@@ -23,26 +25,20 @@ const itemVariants = {
 
 export function StudentDashboard() {
   const user = useAuthStore((state) => state.user);
-  const { courses, assessments } = useDemoStore();
+  const { courses, assessments, problems, enrollStudentWithCode } = useDemoStore();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState({ activeAssessments: [], upcomingAssessments: [], enrolledCourses: [] });
+
+  // Join Code Modal state
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [joinError, setJoinError] = useState('');
 
   useEffect(() => {
     if (!user) return;
 
-    // Auto-enroll student in default courses if they aren't enrolled in any
-    let enrolled = courses.filter(c => c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
-    if (enrolled.length === 0 && user.role === 'student') {
-      courses.forEach(c => {
-        if (c.id === '1' || c.id === '2') {
-          if (!c.students.some(s => s.toLowerCase() === user.email.toLowerCase())) {
-            c.students.push(user.email);
-          }
-        }
-      });
-      useDemoStore.getState().syncToStorage();
-      enrolled = courses.filter(c => c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
-    }
+    // Filter enrolled courses
+    const enrolled = courses.filter(c => c.students && c.students.some(s => s.toLowerCase() === user.email.toLowerCase()));
 
     const enrolledCourseIds = enrolled.map(c => c.id);
     const studentAssessments = assessments.filter(a => enrolledCourseIds.includes(a.courseId));
@@ -85,13 +81,42 @@ export function StudentDashboard() {
       };
     });
 
+    const enrolledMapped = enrolled.map((c) => {
+      const firstProblem = (c.problemIds && c.problemIds.length > 0) ? problems[c.problemIds[0]] : null;
+      const language = firstProblem ? firstProblem.language : 'python';
+      return {
+        ...c,
+        lecturer: c.lecturer === 'lecturer@uni.edu' ? 'Dr. Yaw Anim' : c.lecturer,
+        language
+      };
+    });
+
     setData({
       activeAssessments: active,
       upcomingAssessments: upcoming,
-      enrolledCourses: enrolled
+      enrolledCourses: enrolledMapped
     });
     setLoading(false);
-  }, [courses, assessments, user]);
+  }, [courses, assessments, problems, user]);
+
+  const handleJoinWithCode = (e) => {
+    e.preventDefault();
+    const code = joinCodeInput.trim().toUpperCase();
+    if (!code) {
+      setJoinError('Please enter a course code.');
+      return;
+    }
+
+    try {
+      const course = enrollStudentWithCode(code, user.email);
+      toast.success(`🎉 Successfully joined "${course.title}"!`);
+      setIsJoinModalOpen(false);
+      setJoinCodeInput('');
+      setJoinError('');
+    } catch (err) {
+      setJoinError(err.message || 'Failed to join course. Check code.');
+    }
+  };
 
   if (loading) return <FullPageSpinner />;
 
@@ -176,7 +201,16 @@ export function StudentDashboard() {
         <motion.div variants={itemVariants} className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-[var(--text-primary)]">Enrolled courses</h2>
-            <span className="text-xs text-[var(--text-muted)] uppercase tracking-widest">{data.enrolledCourses.length} total</span>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setIsJoinModalOpen(true)}
+                className="flex items-center gap-1 text-xs text-brand-blue hover:text-brand-purple font-semibold transition-all"
+              >
+                <Code size={13} />
+                Join with Code
+              </button>
+              <span className="text-xs text-[var(--text-muted)] uppercase tracking-widest">{data.enrolledCourses.length} total</span>
+            </div>
           </div>
           <div className="space-y-3">
             {data.enrolledCourses.map((course) => (
@@ -201,6 +235,58 @@ export function StudentDashboard() {
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Join Code Modal */}
+      <Modal
+        isOpen={isJoinModalOpen}
+        onClose={() => {
+          setIsJoinModalOpen(false);
+          setJoinCodeInput('');
+          setJoinError('');
+        }}
+        title="Join Course with Code"
+      >
+        <form onSubmit={handleJoinWithCode} className="space-y-4">
+          <div>
+            <label className="label mb-2">Enter Enrollment Code</label>
+            <input 
+              type="text"
+              placeholder="e.g. PY-101"
+              value={joinCodeInput}
+              onChange={(e) => {
+                setJoinCodeInput(e.target.value);
+                setJoinError('');
+              }}
+              className="input text-center font-mono uppercase tracking-widest text-lg"
+              autoFocus
+            />
+            {joinError && (
+              <p className="text-red-400 text-xs mt-1.5 font-mono">{joinError}</p>
+            )}
+          </div>
+
+          <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3 text-xs text-[var(--text-secondary)] leading-relaxed">
+            💡 <strong>Note:</strong> Ask your course lecturer or check the syllabus announcement to find the 6-character course code.
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button 
+              type="button" 
+              onClick={() => {
+                setIsJoinModalOpen(false);
+                setJoinCodeInput('');
+                setJoinError('');
+              }}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary">
+              Join Course
+            </button>
+          </div>
+        </form>
+      </Modal>
     </motion.div>
   );
 }
