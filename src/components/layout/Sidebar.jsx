@@ -9,11 +9,12 @@ import {
   GraduationCap,
   Users,
   Library,
-  Trophy
+  FileText,
+  X
 } from 'lucide-react';
 import DevLabLogo from '../ui/DevLabLogo';
 
-export function Sidebar() {
+export function Sidebar({ onClose }) {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const isLecturer = user?.role === 'lecturer';
@@ -30,16 +31,24 @@ export function Sidebar() {
     { to: '/lecturer/courses', icon: BookOpen, label: 'My Courses' },
     { to: '/lecturer/problems', icon: Code2, label: 'Problem Bank' },
     { to: '/lecturer/assessments', icon: Library, label: 'Assessments' },
+    { to: '/lecturer/thesis-critique', icon: FileText, label: 'Thesis Critique' },
   ];
 
   const links = isLecturer ? lecturerLinks : studentLinks;
 
   return (
-    <aside className="w-64 max-w-[85vw] h-full border-r border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl z-20 flex flex-col">
-      <div className="h-16 flex items-center px-6 border-b border-default shrink-0">
-        <Link to="/" className="flex items-center gap-2 group hover:opacity-80 transition-opacity">
+    <aside className="w-64 max-w-[85vw] h-full border-r border-default bg-[var(--bg-primary)]/95 backdrop-blur-xl z-20 flex flex-col shadow-2xl">
+      <div className="h-16 flex items-center justify-between px-6 border-b border-default shrink-0">
+        <Link to="/" className="flex items-center gap-2 group hover:opacity-80 transition-opacity" onClick={onClose}>
           <DevLabLogo size="md" mono={false} />
         </Link>
+        <button 
+          onClick={onClose} 
+          className="lg:hidden p-1 rounded hover:bg-white/5 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          title="Close Navigation"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-2">
@@ -54,6 +63,7 @@ export function Sidebar() {
             <Link
               key={link.to}
               to={link.to}
+              onClick={onClose}
               className={`nav-item ${isActive ? 'active' : ''}`}
             >
               <Icon size={18} className={isActive ? 'text-brand-blue' : 'text-[var(--text-secondary)]'} />

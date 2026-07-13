@@ -6,6 +6,7 @@ import { Input, Select } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Code2 } from 'lucide-react';
 import DevLabLogo from '../../components/ui/DevLabLogo';
+import { register } from '../../api/auth.api';
 
 export function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -29,10 +30,28 @@ export function RegisterPage() {
     setLoading(true);
     setError('');
     
-    // MOCK REGISTRATION
-    setTimeout(() => {
-      navigate('/login');
-    }, 1000);
+    try {
+      try {
+        await register(formData);
+        navigate('/login');
+        return;
+      } catch (apiErr) {
+        console.warn("Backend API registration failed, attempting fallback.", apiErr);
+        if (apiErr.response && (apiErr.response.status === 400 || apiErr.response.status === 409 || apiErr.response.status === 422)) {
+          setError(apiErr.response.data?.detail || 'Registration failed');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // MOCK REGISTRATION Fallback
+      setTimeout(() => {
+        navigate('/login');
+      }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Registration failed');
+      setLoading(false);
+    }
   };
 
   const handleChange = (e) => {

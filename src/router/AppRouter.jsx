@@ -36,6 +36,7 @@ const AssessmentCreatePage = React.lazy(() => import('../pages/lecturer/Assessme
 const GradebookPage = React.lazy(() => import('../pages/lecturer/GradebookPage').then(module => ({ default: module.GradebookPage })));
 const StudentAssessmentDetailPage = React.lazy(() => import('../pages/lecturer/StudentAssessmentDetailPage').then(module => ({ default: module.StudentAssessmentDetailPage })));
 const StudentCourseHistoryPage = React.lazy(() => import('../pages/lecturer/StudentCourseHistoryPage').then(module => ({ default: module.StudentCourseHistoryPage })));
+const ThesisCritiquePage = React.lazy(() => import('../pages/lecturer/ThesisCritiquePage').then(module => ({ default: module.ThesisCritiquePage })));
 
 // Loading component for lazy-loaded routes
 const PageLoader = () => (
@@ -124,6 +125,7 @@ export function AppRouter() {
               <Route path="/lecturer/problems/new" element={<ProtectedRoute allowedRole="lecturer"><ProblemAuthorPage /></ProtectedRoute>} />
               <Route path="/lecturer/problems/:problemId/edit" element={<ProtectedRoute allowedRole="lecturer"><ProblemAuthorPage /></ProtectedRoute>} />
               <Route path="/lecturer/assessments/:assessmentId/students/:userId" element={<ProtectedRoute allowedRole="lecturer"><StudentAssessmentDetailPage /></ProtectedRoute>} />
+              <Route path="/lecturer/thesis-critique" element={<ProtectedRoute allowedRole="lecturer"><ThesisCritiquePage /></ProtectedRoute>} />
           </Route>
 
           <Route path="*" element={<NotFoundPage />} />

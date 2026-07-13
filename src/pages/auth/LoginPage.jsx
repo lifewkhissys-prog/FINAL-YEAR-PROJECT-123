@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 
 import { login } from '../../api/auth.api';
 import useAuthStore from '../../store/authStore';
+import { getUserFromToken } from '../../utils/auth';
 import { Input } from '../../components/ui/Input';
 import { Alert } from '../../components/ui/Alert';
 import { Code2 } from 'lucide-react';
@@ -29,12 +30,26 @@ export function LoginPage() {
     setError('');
     
     try {
-      // Mocked login for now since backend might not be ready
-      // const res = await login({ email, password });
-      // setAuth(res.data.user, res.data.access_token);
-      
-      // MOCK DATA
-        setTimeout(() => {
+      try {
+        const res = await login({ email, password });
+        const token = res.data.access_token;
+        const resolvedUser = getUserFromToken(token);
+        if (resolvedUser) {
+          setAuth(resolvedUser, token);
+          navigate(resolvedUser.role === 'lecturer' ? '/lecturer/dashboard' : '/student/dashboard');
+          return;
+        }
+      } catch (apiErr) {
+        console.warn("Backend API login failed, attempting fallback.", apiErr);
+        if (apiErr.response && (apiErr.response.status === 401 || apiErr.response.status === 400 || apiErr.response.status === 422)) {
+          setError(apiErr.response.data?.detail || 'Invalid email or password');
+          setLoading(false);
+          return;
+        }
+      }
+
+      // MOCK DATA Fallback
+      setTimeout(() => {
         const role = email.includes('lecturer') ? 'lecturer' : 'student';
         const name = role === 'lecturer' ? 'Lecturer Demo' : 'Student Demo';
         const mockUser = { id: 1, name, email, role };

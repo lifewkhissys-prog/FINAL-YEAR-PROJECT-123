@@ -4,7 +4,7 @@
 **Database:** PostgreSQL via async SQLAlchemy  
 **Cache:** Redis  
 **Auth:** JWT + bcrypt  
-**Execution sandboxes:** Docker (Python/Java/C++), SQLite in-process (SQL), Browser iframe (HTML)
+**Execution sandboxes:** Judge0 (Python/Java/C++), SQLite in-process (SQL), Browser iframe (HTML)
 
 ---
 
@@ -21,6 +21,7 @@
 | Execution engines | `devlab_backend_execution_engines_guide.md` | — |
 | Submission pipeline & grading | `devlab_backend_submission_pipeline_guide.md` | — |
 | Dashboards & reporting | `devlab_backend_dashboards_guide.md` | — |
+| Thesis Critique | `devlab_backend_thesis_critique_guide.md` | — |
 
 Always read **project setup** and **data models** first. Every other guide assumes their contents.
 
@@ -69,6 +70,11 @@ GET    /lecturer/dashboard
 GET    /student/dashboard
 GET    /student/submissions
 GET    /courses/:courseId/students/:userId/submissions
+
+POST   /thesis-critique
+GET    /thesis-critique
+GET    /thesis-critique/:critiqueId
+DELETE /thesis-critique/:critiqueId
 ```
 
 ---

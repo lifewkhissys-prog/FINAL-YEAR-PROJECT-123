@@ -27,8 +27,8 @@ export function AppShell() {
 
       {/* Sidebar - responsive behavior */}
       {!hideSidebar && (
-        <div className={`fixed lg:static inset-y-0 left-0 z-20 transition-transform duration-300 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
-          <Sidebar />
+        <div className={`fixed lg:hidden inset-y-0 left-0 z-20 transition-transform duration-300 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <Sidebar onClose={() => setSidebarOpen(false)} />
         </div>
       )}
 

@@ -12,7 +12,7 @@ The execution layer is the sandboxed environment that runs student code against 
 
 | Engine | Languages | Isolation |
 |--------|-----------|-----------|
-| Docker executor | Python, Java, C++ | Short-lived container, resource-limited |
+| Judge0 executor | Python, Java, C++ | Isolated sandbox via Judge0 API |
 | SQLite executor | SQL | Fresh in-memory SQLite instance per run |
 | Browser executor | HTML/CSS/JS | No server execution — marks as pass, returns code |
 
@@ -49,142 +49,69 @@ class BaseExecutor(ABC):
 
 ---
 
-## Docker Executor (`app/execution/docker_executor.py`)
+## Judge0 Executor (`app/execution/judge0_executor.py`)
 
 Handles Python, Java, and C++.
 
 ### How it works
 
-1. Write the student's code to a temp file on the host
-2. Start a Docker container with:
-   - The temp directory mounted read-only
-   - CPU and memory limits applied
-   - No network access
-   - A single command to compile (if needed) and run the code with `stdin` piped in
-3. Capture `stdout` and `stderr`
-4. Compare `stdout.strip()` to `expected_stdout.strip()`
-5. Destroy the container
-6. Return `ExecutionResult`
+1. Initialize by fetching supported languages from the configured Judge0 instance to map language names to their respective `language_id` dynamically.
+2. Base64-encode the student's source code and input (`stdin`) to safely handle binary, multiline, or special character payloads.
+3. Submit a synchronous run request to Judge0 by POSTing to `{JUDGE0_API_URL}/submissions?wait=true` with the time and memory limits properly scaled.
+4. Scale request constraints appropriately:
+   - Convert time limit from milliseconds (e.g. `2000`) to seconds (`2.0` float) for Judge0's `cpu_time_limit`.
+   - Convert memory limit from Megabytes (e.g. `256`) to Kilobytes (`262144` integer) for Judge0's `memory_limit`.
+5. Receive execution outcomes including execution timing, memory footprint, status IDs, and base64-encoded `stdout`/`stderr`/`compile_output`.
+6. Strip and compare the decoded stdout against the expected stdout, mapping outcomes to execution status types (Compilation Error, Time Limit Exceeded, Runtime Error, etc.).
 
-### Language-specific commands
+### Dynamic Language Mapping
+
+Rather than hardcoding language IDs, the Judge0 Executor queries the configured Judge0 endpoint upon initialization:
 
 ```python
-LANGUAGE_CONFIG = {
-    "python": {
-        "image":   "python:3.11-slim",
-        "compile": None,
-        "run":     "python /code/solution.py",
-        "file":    "solution.py",
-    },
-    "java": {
-        "image":   "openjdk:21-slim",
-        "compile": "javac /code/Solution.java",
-        "run":     "java -cp /code Solution",
-        "file":    "Solution.java",
-    },
-    "cpp": {
-        "image":   "gcc:13",
-        "compile": "g++ -O2 -o /code/solution /code/solution.cpp",
-        "run":     "/code/solution",
-        "file":    "solution.cpp",
-    },
-}
+# app/execution/judge0_executor.py (excerpt)
+async def initialize(self):
+    fallback = {
+        "python": 71, # Python 3.8.1
+        "java": 62,   # OpenJDK 13.0.1
+        "cpp": 54     # GCC 9.2.0
+    }
+    try:
+        url = f"{settings.JUDGE0_API_URL.rstrip('/')}/languages"
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=self._get_headers(), timeout=5.0)
+            if response.status_code == 200:
+                languages = response.json()
+                # Find matching language IDs based on names
+                # For python, java, cpp
+                ...
 ```
+
+### Status Mapping
+
+Judge0 utilizes a standard status ID schema:
+
+| Status ID | Description | Mapping Outcome |
+|-----------|-------------|-----------------|
+| 3 | Accepted | Output match verification |
+| 4 | Wrong Answer | `passed=False` |
+| 5 | Time Limit Exceeded | `passed=False`, `stderr="Time Limit Exceeded"` |
+| 6 | Compilation Error | `passed=False`, `stderr=compile_output` |
+| 7 to 12 | Runtime Errors / System Failures | `passed=False`, `stderr=stderr` |
 
 ### Implementation
 
 ```python
-import docker
-import tempfile
-import os
-import time
+import base64
+import httpx
+import logging
+from app.config import settings
+from app.execution.base import BaseExecutor, ExecutionResult
 
-client = docker.from_env()
-
-class DockerExecutor(BaseExecutor):
-    async def run(self, code, language, stdin, expected_stdout, time_limit_ms, memory_limit_mb) -> ExecutionResult:
-        config = LANGUAGE_CONFIG[language]
-        start = time.monotonic()
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Write code file
-            code_path = os.path.join(tmpdir, config["file"])
-            with open(code_path, "w") as f:
-                f.write(code)
-
-            try:
-                # Compile step (Java, C++)
-                if config["compile"]:
-                    compile_result = client.containers.run(
-                        config["image"],
-                        command=config["compile"],
-                        volumes={tmpdir: {"bind": "/code", "mode": "rw"}},
-                        remove=True,
-                        network_disabled=True,
-                        mem_limit=f"{memory_limit_mb}m",
-                        stdout=True,
-                        stderr=True,
-                    )
-                    if compile_result.exit_code != 0:
-                        return ExecutionResult(
-                            passed=False,
-                            actual_stdout="",
-                            exec_time_ms=0,
-                            stderr=compile_result.decode(),
-                        )
-
-                # Run step
-                timeout_secs = time_limit_ms / 1000
-                result = client.containers.run(
-                    config["image"],
-                    command=config["run"],
-                    volumes={tmpdir: {"bind": "/code", "mode": "ro"}},
-                    stdin_open=True,
-                    remove=True,
-                    network_disabled=True,
-                    mem_limit=f"{memory_limit_mb}m",
-                    cpu_quota=settings.SANDBOX_CPU_QUOTA,
-                    environment={"STDIN_DATA": stdin or ""},
-                    stdout=True,
-                    stderr=True,
-                    timeout=int(timeout_secs) + 2,
-                )
-
-            except docker.errors.ContainerError as e:
-                elapsed_ms = int((time.monotonic() - start) * 1000)
-                return ExecutionResult(
-                    passed=False,
-                    actual_stdout="",
-                    exec_time_ms=elapsed_ms,
-                    stderr=e.stderr.decode() if e.stderr else "Runtime error",
-                )
-
-            elapsed_ms = int((time.monotonic() - start) * 1000)
-            actual = result.decode().strip()
-            expected = expected_stdout.strip()
-
-            return ExecutionResult(
-                passed=(actual == expected),
-                actual_stdout=actual,
-                exec_time_ms=elapsed_ms,
-                stderr="",
-            )
+class Judge0Executor(BaseExecutor):
+    # Implements BaseExecutor.run(...)
+    # Connects to settings.JUDGE0_API_URL and submits requests with wait=true.
 ```
-
-### Resource limits
-
-Apply these from `settings`:
-
-| Limit | Value | Notes |
-|-------|-------|-------|
-| Memory | `memory_limit_mb` (default 256MB) | `mem_limit` in Docker SDK |
-| CPU | `SANDBOX_CPU_QUOTA` (default 50000 = 50%) | `cpu_quota` |
-| Network | Disabled | `network_disabled=True` |
-| Timeout | `time_limit_ms / 1000 + 2s` buffer | Outer `timeout` on `containers.run` |
-
-### Time Limit Exceeded
-
-If `elapsed_ms > time_limit_ms`, override `stderr` with "Time Limit Exceeded" and set `passed=False` regardless of output match.
 
 ---
 
@@ -287,31 +214,32 @@ For the FYP scope, HTML/CSS/JS submissions are treated as auto-passing on the se
 ## Executor Factory (`app/execution/__init__.py`)
 
 ```python
-from app.execution.docker_executor  import DockerExecutor
-from app.execution.sqlite_executor  import SQLiteExecutor
+from app.execution.base import BaseExecutor
+from app.execution.sqlite_executor import SQLiteExecutor
 from app.execution.browser_executor import BrowserExecutor
+from app.execution.judge0_executor import Judge0Executor
+
+_judge0_executor = Judge0Executor()
 
 def get_executor(language: str) -> BaseExecutor:
-    if language in ("python", "java", "cpp"):
-        return DockerExecutor()
-    if language == "sql":
+    lang_lower = language.lower()
+    if lang_lower in ("python", "java", "cpp"):
+        return _judge0_executor
+    elif lang_lower == "sql":
         return SQLiteExecutor()
-    if language == "html":
+    elif lang_lower == "html":
         return BrowserExecutor()
-    raise ValueError(f"Unsupported language: {language}")
+    else:
+        raise ValueError(f"Unsupported language: {language}")
 ```
 
 ---
 
-## Security Checklist for Docker Sandbox
+## Security Notes for Judge0 Sandbox
 
-- `network_disabled=True` — no outbound/inbound network from container
-- `mem_limit` — prevents memory exhaustion
-- `cpu_quota` — prevents CPU starvation of the host
-- Container is always `remove=True` — no persistent container state
-- Code files written to a temp directory that is cleaned up after each run
-- Never mount sensitive host paths into the container
-- Consider running containers as a non-root user: add `user="1000:1000"` to `containers.run`
+- **Remote Sandbox Isolation:** Sandboxing is managed remotely or in a dedicated container group by Judge0, meaning the backend does not run untrusted student code on its own container host.
+- **Resource Constraints:** CPU and memory limits are passed with every submission request (`cpu_time_limit` and `memory_limit`) and enforced by the Judge0 sandbox runner.
+- **Payload Validation:** The backend validates request payload sizes before submitting to Judge0 to avoid payload injection attacks or exhausting network bandwidth.
 
 ---
 

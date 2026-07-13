@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: devlab_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: devlab
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d devlab"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: devlab_redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    container_name: devlab_backend
+    ports:
+      - "8001:8000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/devlab
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=devlabsecretkeychangeinproduction12345
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
+      - GROQ_API_KEY=${GROQ_API_KEY:-gsk_placeholder}
+      - GROQ_MODEL=llama3-70b-8192
+      - THESIS_UPLOAD_MAX_MB=20
+      - JUDGE0_API_URL=${JUDGE0_API_URL:-http://localhost:2358}
+      - JUDGE0_API_KEY=${JUDGE0_API_KEY:-}
+      - JUDGE0_USE_AUTH_HEADER=False
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
