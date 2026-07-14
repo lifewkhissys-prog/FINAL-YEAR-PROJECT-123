@@ -1,8 +1,7 @@
-version: '3.8'
 
 services:
   db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     container_name: devlab_db
     environment:
       POSTGRES_USER: postgres
@@ -34,14 +33,19 @@ services:
       - "8001:8000"
     volumes:
       - .:/app
+      - fastembed_cache:/root/.cache/fastembed
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/devlab
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=devlabsecretkeychangeinproduction12345
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=1440
-      - GROQ_API_KEY=${GROQ_API_KEY:-gsk_placeholder}
-      - GROQ_MODEL=llama3-70b-8192
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_SCORER_MODEL=${GROQ_SCORER_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_VERIFIER_MODEL=${GROQ_VERIFIER_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_SYNTHESIS_MODEL=${GROQ_SYNTHESIS_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_FAST_MODEL=${GROQ_FAST_MODEL:-llama-3.1-8b-instant}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
       - THESIS_UPLOAD_MAX_MB=20
       - JUDGE0_API_URL=${JUDGE0_API_URL:-http://localhost:2358}
       - JUDGE0_API_KEY=${JUDGE0_API_KEY:-}
@@ -55,3 +59,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  fastembed_cache:

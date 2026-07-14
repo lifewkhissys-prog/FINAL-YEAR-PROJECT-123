@@ -7,7 +7,13 @@ from app.models.problem import Problem, ProblemType, ProblemLanguage
 from app.models.test_case import TestCase
 from app.models.submission import Submission, SubmissionStatus
 from app.models.test_result import TestResult
-from app.models.thesis_critique import ThesisCritique, CritiqueStatus
+from app.models.thesis_critique import (
+    RubricCriterion,
+    GradedExample,
+    ThesisSubmission,
+    AssessmentResult,
+    SubmissionStatus as ThesisSubmissionStatus,
+)
 
 __all__ = [
     "Base",
@@ -24,6 +30,9 @@ __all__ = [
     "Submission",
     "SubmissionStatus",
     "TestResult",
-    "ThesisCritique",
-    "CritiqueStatus"
+    "RubricCriterion",
+    "GradedExample",
+    "ThesisSubmission",
+    "AssessmentResult",
+    "ThesisSubmissionStatus",
 ]

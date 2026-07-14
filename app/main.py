@@ -1,13 +1,15 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.database import Base, engine
+from app.database import Base, engine, init_pgvector
 from app.utils.errors import register_error_handlers
-from app.routers import auth, courses, assessments, problems, submissions, thesis, dashboard
+from app.routers import auth, courses, assessments, problems, submissions, dashboard
+from app.routers.thesis import rubric_router, submissions_router, examples_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure all tables are created on startup
+    # Create pgvector extension before creating tables
+    await init_pgvector()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -36,8 +38,12 @@ app.include_router(courses.router, prefix="/courses", tags=["Courses"])
 app.include_router(assessments.router, prefix="/assessments", tags=["Assessments"])
 app.include_router(problems.router, prefix="/problems", tags=["Problems"])
 app.include_router(submissions.router, prefix="/submissions", tags=["Submissions"])
-app.include_router(thesis.router, prefix="/thesis-critique", tags=["Thesis Critique"])
-app.include_router(dashboard.router, tags=["Dashboard"]) # Mounted at root to support /lecturer and /student endpoints
+app.include_router(dashboard.router, tags=["Dashboard"])
+
+# Thesis Assessment routers (rubric-grounded multi-agent pipeline)
+app.include_router(rubric_router)
+app.include_router(submissions_router)
+app.include_router(examples_router)
 
 @app.get("/health")
 def health_check():

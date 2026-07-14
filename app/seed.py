@@ -1,457 +1,223 @@
+"""
+Seed the 7 rubric criteria for thesis assessment.
+
+This is configuration bootstrapping, not demo data.
+Run once after initial deployment: python -m app.seed
+"""
+
 import asyncio
-import json
-from datetime import datetime, timedelta, timezone
-from sqlalchemy import text
-from app.database import SessionLocal, engine
-from app.models.user import User, UserRole
-from app.models.course import Course, CourseLanguage
-from app.models.enrollment import Enrollment
-from app.models.assessment import Assessment
-from app.models.problem import Problem, ProblemType, ProblemLanguage
-from app.models.test_case import TestCase
-from app.models.submission import Submission, SubmissionStatus
-from app.models.test_result import TestResult
-from app.models.thesis_critique import ThesisCritique, CritiqueStatus
-from app.utils.hashing import hash_password
+from sqlalchemy import select, func
+from app.database import SessionLocal, engine, init_pgvector
+from app.models.thesis_critique import RubricCriterion
+from app.services.embedding_service import embed_single
+from app.database import Base
 
-async def seed_db():
-    print("--- STARTING DATABASE SEEDING ---")
+RUBRIC_CRITERIA = [
+    {
+        "name": "Metric & Technical Consistency",
+        "weight": 0.25,
+        "description": (
+            "Evaluates whether all quantitative metrics (accuracy, precision, recall, F1, FAR, FRR, AUC, etc.) "
+            "are defined correctly, computed consistently, and reported without contradiction across the abstract, "
+            "methodology, results tables, and discussion. Checks that formulas match reported values and that "
+            "comparison baselines use the same metric definitions."
+        ),
+        "level_1_desc": (
+            "Multiple metric definitions are wrong or contradictory. Tables contain values that do not match "
+            "the formulas given. Key metrics are mixed up (e.g., FAR and FRR swapped). Baseline comparisons "
+            "use different metric definitions without acknowledgment."
+        ),
+        "level_3_desc": (
+            "Metrics are mostly defined correctly but with minor inconsistencies between tables or between "
+            "the methodology and results chapters. One or two values may not match the stated formula. "
+            "The student shows understanding of the metrics but has made careless errors."
+        ),
+        "level_5_desc": (
+            "All metrics are precisely defined, consistently applied across every table and figure, and "
+            "match their formulas exactly. Baseline comparisons use identical metric definitions. Any "
+            "limitations of the chosen metrics are acknowledged."
+        ),
+    },
+    {
+        "name": "Claims-Evidence Alignment",
+        "weight": 0.20,
+        "description": (
+            "Assesses whether the claims made in the abstract, introduction, discussion, and conclusion are "
+            "actually supported by the evidence presented in the results chapter. Checks for overclaiming "
+            "(stating strong conclusions from weak results), unsupported generalisations, and whether the "
+            "language appropriately hedges based on the strength of the evidence."
+        ),
+        "level_1_desc": (
+            "Major claims are unsupported or directly contradicted by the results. The abstract and conclusion "
+            "significantly overstate the findings. Strong language ('proves', 'ensures', 'solves') is used "
+            "despite weak or negative results."
+        ),
+        "level_3_desc": (
+            "Most claims are supported but the language occasionally overstates the evidence. Some conclusions "
+            "go slightly beyond what the data shows. The student generally attempts to ground claims in results "
+            "but has a few instances of overclaiming."
+        ),
+        "level_5_desc": (
+            "Every claim is directly traceable to specific evidence. The language precisely matches the strength "
+            "of the results (e.g., 'suggests' vs 'demonstrates' used appropriately). Limitations are honestly "
+            "stated and conclusions are proportionate to the evidence."
+        ),
+    },
+    {
+        "name": "Scope-Methodology-Implementation Alignment",
+        "weight": 0.15,
+        "description": (
+            "Checks whether the declared scope (objectives, research questions, features) in the introduction "
+            "matches what was actually implemented in the methodology and results. Identifies scope drift, "
+            "missing implementations, or features described but never evaluated."
+        ),
+        "level_1_desc": (
+            "Major mismatch between declared scope and implementation. Multiple objectives or features listed "
+            "in the introduction are absent from the methodology and results. The implemented system does "
+            "something significantly different from what was described."
+        ),
+        "level_3_desc": (
+            "Most declared features and objectives are implemented, but one or two are partially addressed "
+            "or missing without explanation. The scope and implementation are broadly aligned but with "
+            "noticeable gaps."
+        ),
+        "level_5_desc": (
+            "Perfect alignment between declared scope, methodology, and implementation. Every objective "
+            "has a corresponding method and result. Any scope changes are explicitly justified."
+        ),
+    },
+    {
+        "name": "Methodological Rigor",
+        "weight": 0.15,
+        "description": (
+            "Evaluates the quality of the research design: dataset selection and justification, experimental "
+            "controls, train/test splitting or cross-validation, parameter justification, threats to validity, "
+            "and whether the methodology would allow an independent researcher to reproduce the results."
+        ),
+        "level_1_desc": (
+            "No clear experimental design. Dataset choice is unjustified. No train/test split or the same "
+            "data is used for both tuning and evaluation. Parameters are described as 'arbitrary'. No "
+            "discussion of threats to validity or reproducibility."
+        ),
+        "level_3_desc": (
+            "Basic experimental design is present with a dataset justification and some form of evaluation "
+            "protocol. However, the train/test split may be unclear, parameter choices need stronger "
+            "justification, and threats to validity are mentioned briefly but not analysed."
+        ),
+        "level_5_desc": (
+            "Rigorous experimental design with clear dataset justification, proper train/validation/test "
+            "splits, well-justified parameters (empirical or literature-based), comprehensive threats to "
+            "validity analysis, and enough methodological detail for full reproducibility."
+        ),
+    },
+    {
+        "name": "Literature Review Quality",
+        "weight": 0.10,
+        "description": (
+            "Assesses the quality of the literature review: breadth and recency of sources, critical "
+            "synthesis vs. descriptive listing, identification of the research gap, and how the review "
+            "builds toward the thesis contribution."
+        ),
+        "level_1_desc": (
+            "The literature review is a descriptive list of papers with no synthesis or comparison. "
+            "Sources are outdated or low-quality. The research gap is not clearly identified. "
+            "No critical analysis of existing work's limitations."
+        ),
+        "level_3_desc": (
+            "The review covers relevant literature with some synthesis and comparison between works. "
+            "The research gap is identified but could be sharper. Mix of recent and older sources. "
+            "Some critical analysis but tends toward description."
+        ),
+        "level_5_desc": (
+            "Comprehensive, critically synthesised review with recent, high-quality sources. Works are "
+            "compared and contrasted systematically. The research gap is clearly and convincingly argued. "
+            "The review logically builds toward the thesis contribution."
+        ),
+    },
+    {
+        "name": "Referencing & Citation Integrity",
+        "weight": 0.08,
+        "description": (
+            "Checks whether citations are accurate, consistently formatted, and properly used. Evaluates "
+            "whether all claims requiring citation are supported, whether reference entries are complete "
+            "and verifiable, and whether the citation style is consistent throughout."
+        ),
+        "level_1_desc": (
+            "Multiple missing citations for factual claims. Reference list has incomplete or unverifiable "
+            "entries. Citation style is inconsistent. Some cited works do not appear in the reference list "
+            "or vice versa."
+        ),
+        "level_3_desc": (
+            "Most claims are properly cited. Reference list is mostly complete but with a few formatting "
+            "errors or missing fields (DOI, volume, pages). Citation style is generally consistent with "
+            "minor lapses."
+        ),
+        "level_5_desc": (
+            "Every factual claim is properly cited. Reference list is complete with all required fields. "
+            "Citation style is perfectly consistent throughout. All references are verifiable and "
+            "academically credible."
+        ),
+    },
+    {
+        "name": "Structure & Presentation",
+        "weight": 0.07,
+        "description": (
+            "Evaluates the overall document structure, formatting, language quality, logical flow between "
+            "chapters and sections, proper use of headings, figure/table captions, numbering, and overall "
+            "presentation quality."
+        ),
+        "level_1_desc": (
+            "Poor document structure with missing or misplaced sections. Significant grammar and spelling "
+            "errors. Inconsistent formatting, broken numbering, missing captions. The document is difficult "
+            "to follow due to structural issues."
+        ),
+        "level_3_desc": (
+            "Standard chapter structure is followed. Language is generally clear with occasional errors. "
+            "Formatting is mostly consistent but with some issues in table/figure captions or numbering. "
+            "Logical flow between sections is adequate."
+        ),
+        "level_5_desc": (
+            "Excellent document structure with clear logical flow. Professional formatting throughout. "
+            "All figures and tables properly captioned, numbered, and cross-referenced. Language is "
+            "formal, precise, and free of errors. Table of contents is accurate and complete."
+        ),
+    },
+]
+
+
+async def seed_rubric():
+    """Seed the 7 rubric criteria. Idempotent — skips if criteria already exist."""
+    print("── Initializing database ──")
+    await init_pgvector()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     async with SessionLocal() as session:
-        # 1. Truncate existing tables to start fresh
-        print("Clearing existing tables...")
-        await session.execute(text(
-            "TRUNCATE TABLE test_results, submissions, test_cases, problems, "
-            "assessments, enrollments, courses, thesis_critiques, users "
-            "RESTART IDENTITY CASCADE;"
-        ))
-        await session.commit()
+        # Check if criteria already exist
+        result = await session.execute(select(func.count(RubricCriterion.id)))
+        count = result.scalar()
+        if count and count > 0:
+            print(f"✓ {count} rubric criteria already exist. Skipping seed.")
+            return
 
-        # 2. Seed Users
-        print("Seeding users...")
-        lecturer = User(
-            name="Dr. Angela Smith",
-            email="lecturer@uni.edu",
-            password_hash=hash_password("password123"),
-            role=UserRole.lecturer
-        )
-        student_john = User(
-            name="John Doe",
-            email="student@uni.edu",
-            password_hash=hash_password("password123"),
-            role=UserRole.student
-        )
-        student_kelvin = User(
-            name="Ankomah Kelvin",
-            email="kelvin@uni.edu",
-            password_hash=hash_password("password123"),
-            role=UserRole.student
-        )
-        student_seidu = User(
-            name="Mohammed Seidu",
-            email="seidu@uni.edu",
-            password_hash=hash_password("password123"),
-            role=UserRole.student
-        )
-        
-        session.add_all([lecturer, student_john, student_kelvin, student_seidu])
-        await session.commit()
-        await session.refresh(lecturer)
-        await session.refresh(student_john)
-        await session.refresh(student_kelvin)
-        await session.refresh(student_seidu)
-
-        # 3. Seed Courses
-        print("Seeding courses...")
-        course_python = Course(
-            title="Introduction to Python",
-            language=CourseLanguage.python,
-            description="Basics of programming, variables, loops, control structures, and collections in Python.",
-            lecturer_id=lecturer.id
-        )
-        course_db = Course(
-            title="Database Systems",
-            language=CourseLanguage.sql,
-            description="Relational database concepts, database design, normalization, and complex SQL query formulation.",
-            lecturer_id=lecturer.id
-        )
-        course_ds = Course(
-            title="Data Structures",
-            language=CourseLanguage.java,
-            description="Implementing stacks, queues, linked lists, binary trees, and sorting algorithms in Java.",
-            lecturer_id=lecturer.id
-        )
-
-        session.add_all([course_python, course_db, course_ds])
-        await session.commit()
-        await session.refresh(course_python)
-        await session.refresh(course_db)
-        await session.refresh(course_ds)
-
-        # 4. Seed Enrollments
-        print("Seeding enrollments...")
-        enrollments = [
-            Enrollment(user_id=student_kelvin.id, course_id=course_python.id),
-            Enrollment(user_id=student_seidu.id, course_id=course_python.id),
-            Enrollment(user_id=student_kelvin.id, course_id=course_db.id),
-            Enrollment(user_id=student_seidu.id, course_id=course_ds.id),
-            Enrollment(user_id=student_john.id, course_id=course_python.id)
-        ]
-        session.add_all(enrollments)
-        await session.commit()
-
-        # 5. Seed Assessments
-        print("Seeding assessments...")
-        now = datetime.now(timezone.utc)
-        
-        # Midterm practical starts 2 hours ago and ends in 5 days
-        midterm = Assessment(
-            course_id=course_python.id,
-            title="Midterm Practical",
-            duration_secs=7200, # 120 minutes
-            starts_at=now - timedelta(hours=2),
-            ends_at=now + timedelta(days=5)
-        )
-        
-        # SQL Joins Quiz starts tomorrow
-        sql_quiz = Assessment(
-            course_id=course_db.id,
-            title="SQL Joins Quiz",
-            duration_secs=3600, # 60 minutes
-            starts_at=now + timedelta(days=1),
-            ends_at=now + timedelta(days=10)
-        )
-        
-        # Final Lab ended 2 days ago
-        final_lab = Assessment(
-            course_id=course_ds.id,
-            title="Final Lab",
-            duration_secs=10800, # 180 minutes
-            starts_at=now - timedelta(days=5),
-            ends_at=now - timedelta(days=2)
-        )
-        
-        session.add_all([midterm, sql_quiz, final_lab])
-        await session.commit()
-        await session.refresh(midterm)
-        await session.refresh(sql_quiz)
-        await session.refresh(final_lab)
-
-        # 6. Seed Problems and Test Cases
-        print("Seeding problems...")
-        
-        # Two Sum Challenge Problem
-        two_sum_content = {
-            "description": (
-                "Given an array of integers `nums` and an integer `target`, return "
-                "indices of the two numbers such that they add up to `target`.\n\n"
-                "You may assume that each input would have exactly one solution, "
-                "and you may not use the same element twice.\n\n"
-                "**Example:**\n"
-                "```python\n"
-                "Input: nums = [2,7,11,15], target = 9\n"
-                "Output: [0,1]\n"
-                "```"
-            ),
-            "starterCode": (
-                "import sys\n"
-                "import json\n\n"
-                "def two_sum(nums, target):\n"
-                "    # Write your solution here\n"
-                "    seen = {}\n"
-                "    for i, num in enumerate(nums):\n"
-                "        diff = target - num\n"
-                "        if diff in seen:\n"
-                "            return [seen[diff], i]\n"
-                "        seen[num] = i\n"
-                "    return []\n\n"
-                "if __name__ == '__main__':\n"
-                "    # Simple runner to read input from stdin\n"
-                "    lines = sys.stdin.read().splitlines()\n"
-                "    if lines:\n"
-                "        nums = json.loads(lines[0])\n"
-                "        target = int(lines[1])\n"
-                "        print(json.dumps(two_sum(nums, target)))\n"
+        print("Seeding 7 rubric criteria...")
+        for i, data in enumerate(RUBRIC_CRITERIA, 1):
+            print(f"  [{i}/7] {data['name']} (weight={data['weight']})")
+            embedding = embed_single(data["description"])
+            criterion = RubricCriterion(
+                name=data["name"],
+                description=data["description"],
+                weight=data["weight"],
+                level_1_desc=data["level_1_desc"],
+                level_3_desc=data["level_3_desc"],
+                level_5_desc=data["level_5_desc"],
+                embedding=embedding,
             )
-        }
-        
-        problem_two_sum = Problem(
-            assessment_id=midterm.id,
-            title="Two Sum",
-            type=ProblemType.challenge,
-            language=ProblemLanguage.python,
-            content=json.dumps(two_sum_content),
-            time_limit_ms=2000,
-            memory_limit_mb=256
-        )
-        session.add(problem_two_sum)
+            session.add(criterion)
+
         await session.commit()
-        await session.refresh(problem_two_sum)
+        print("✓ Rubric criteria seeded successfully.")
 
-        tc_two_sum_1 = TestCase(
-            problem_id=problem_two_sum.id,
-            stdin="[2,7,11,15]\n9",
-            expected_stdout="[0, 1]",
-            is_hidden=False,
-            position=0
-        )
-        tc_two_sum_2 = TestCase(
-            problem_id=problem_two_sum.id,
-            stdin="[3,2,4]\n6",
-            expected_stdout="[1, 2]",
-            is_hidden=False,
-            position=1
-        )
-        tc_two_sum_3 = TestCase(
-            problem_id=problem_two_sum.id,
-            stdin="[3,3]\n6",
-            expected_stdout="[0, 1]",
-            is_hidden=True,
-            position=2
-        )
-        session.add_all([tc_two_sum_1, tc_two_sum_2, tc_two_sum_3])
-        await session.commit()
 
-        # Valid Palindrome Problem
-        palindrome_content = {
-            "description": (
-                "A phrase is a palindrome if, after converting all uppercase letters into "
-                "lowercase letters and removing all non-alphanumeric characters, it reads the "
-                "same forward and backward.\n\n"
-                "**Example:**\n"
-                "```python\n"
-                "Input: s = \"A man, a plan, a canal: Panama\"\n"
-                "Output: True\n"
-                "```"
-            ),
-            "starterCode": (
-                "import sys\n\n"
-                "def is_palindrome(s: str) -> bool:\n"
-                "    cleaned = ''.join(c.lower() for c in s if c.isalnum())\n"
-                "    return cleaned == cleaned[::-1]\n\n"
-                "if __name__ == '__main__':\n"
-                "    inp = sys.stdin.read().strip()\n"
-                "    print(is_palindrome(inp))\n"
-            )
-        }
-        
-        problem_palindrome = Problem(
-            assessment_id=midterm.id,
-            title="Valid Palindrome",
-            type=ProblemType.challenge,
-            language=ProblemLanguage.python,
-            content=json.dumps(palindrome_content),
-            time_limit_ms=2000,
-            memory_limit_mb=256
-        )
-        session.add(problem_palindrome)
-        await session.commit()
-        await session.refresh(problem_palindrome)
-
-        tc_pal_1 = TestCase(
-            problem_id=problem_palindrome.id,
-            stdin="A man, a plan, a canal: Panama",
-            expected_stdout="True",
-            is_hidden=False,
-            position=0
-        )
-        tc_pal_2 = TestCase(
-            problem_id=problem_palindrome.id,
-            stdin="race a car",
-            expected_stdout="False",
-            is_hidden=False,
-            position=1
-        )
-        session.add_all([tc_pal_1, tc_pal_2])
-        await session.commit()
-
-        # SQL Challenge Problem
-        sql_content = {
-            "description": (
-                "Query all employees from the Engineering department with a salary greater than 70000."
-            ),
-            "starterCode": "SELECT name, salary FROM employees WHERE department = 'Engineering' AND salary > 70000;",
-            "seedSql": (
-                "CREATE TABLE employees (id INT PRIMARY KEY, name VARCHAR(50), department VARCHAR(50), salary INT);\n"
-                "INSERT INTO employees VALUES (1, 'Alice Smith', 'Engineering', 85000);\n"
-                "INSERT INTO employees VALUES (2, 'Bob Johnson', 'Marketing', 60000);\n"
-                "INSERT INTO employees VALUES (3, 'Charlie Brown', 'Engineering', 95000);\n"
-                "INSERT INTO employees VALUES (4, 'Diana Prince', 'HR', 55000);\n"
-            )
-        }
-        
-        problem_sql = Problem(
-            assessment_id=sql_quiz.id,
-            title="High Salary Engineers",
-            type=ProblemType.challenge,
-            language=ProblemLanguage.sql,
-            content=json.dumps(sql_content),
-            time_limit_ms=5000,
-            memory_limit_mb=256
-        )
-        session.add(problem_sql)
-        await session.commit()
-        await session.refresh(problem_sql)
-
-        tc_sql = TestCase(
-            problem_id=problem_sql.id,
-            stdin=sql_content["seedSql"],
-            expected_stdout="Alice Smith,85000\nCharlie Brown,95000",
-            is_hidden=False,
-            position=0
-        )
-        session.add(tc_sql)
-        await session.commit()
-
-        # 7. Seed Submissions
-        print("Seeding submissions...")
-        
-        # Kelvin Two Sum Submission
-        sub_kelvin = Submission(
-            user_id=student_kelvin.id,
-            problem_id=problem_two_sum.id,
-            code="def two_sum(nums, target):\n    seen = {}\n    for i, num in enumerate(nums):\n        diff = target - num\n        if diff in seen:\n            return [seen[diff], i]\n        seen[num] = i\n    return []",
-            language="python",
-            status=SubmissionStatus.completed,
-            score=100,
-            is_graded=True,
-            submitted_at=now - timedelta(hours=1)
-        )
-        
-        # Seidu Two Sum Submission (Slightly slower/different code)
-        sub_seidu = Submission(
-            user_id=student_seidu.id,
-            problem_id=problem_two_sum.id,
-            code="def two_sum(nums, target):\n    for i in range(len(nums)):\n        for j in range(i+1, len(nums)):\n            if nums[i] + nums[j] == target:\n                return [i, j]",
-            language="python",
-            status=SubmissionStatus.completed,
-            score=100,
-            is_graded=True,
-            submitted_at=now - timedelta(minutes=45)
-        )
-
-        session.add_all([sub_kelvin, sub_seidu])
-        await session.commit()
-        await session.refresh(sub_kelvin)
-        await session.refresh(sub_seidu)
-
-        # Seed TestResults
-        tr_k1 = TestResult(submission_id=sub_kelvin.id, test_case_id=tc_two_sum_1.id, passed=True, actual_stdout="[0, 1]", exec_time_ms=12)
-        tr_k2 = TestResult(submission_id=sub_kelvin.id, test_case_id=tc_two_sum_2.id, passed=True, actual_stdout="[1, 2]", exec_time_ms=14)
-        tr_k3 = TestResult(submission_id=sub_kelvin.id, test_case_id=tc_two_sum_3.id, passed=True, actual_stdout="[0, 1]", exec_time_ms=10)
-        
-        tr_s1 = TestResult(submission_id=sub_seidu.id, test_case_id=tc_two_sum_1.id, passed=True, actual_stdout="[0, 1]", exec_time_ms=45)
-        tr_s2 = TestResult(submission_id=sub_seidu.id, test_case_id=tc_two_sum_2.id, passed=True, actual_stdout="[1, 2]", exec_time_ms=52)
-        tr_s3 = TestResult(submission_id=sub_seidu.id, test_case_id=tc_two_sum_3.id, passed=True, actual_stdout="[0, 1]", exec_time_ms=40)
-        
-        session.add_all([tr_k1, tr_k2, tr_k3, tr_s1, tr_s2, tr_s3])
-        await session.commit()
-
-        # 8. Seed Thesis Critiques
-        print("Seeding thesis critiques...")
-        
-        critique1_report = {
-            "summary": {
-                "overall_score": 82,
-                "metrics": {
-                    "academic_writing": 80,
-                    "methodological_rigor": 75,
-                    "literature_review": 88,
-                    "structure_coherence": 85
-                },
-                "general_critique": (
-                    "This dissertation titled 'Deep Learning in Code Analysis' demonstrates a robust understanding of deep "
-                    "learning concepts applied to parsing static code repositories. The literature review is comprehensive. "
-                    "However, the methodology needs clarification regarding hyperparameter choices and baseline models comparison."
-                )
-            },
-            "chapters": [
-                {
-                    "name": "Chapter 1: Introduction",
-                    "score": 85,
-                    "findings": [
-                        {
-                            "category": "academic_writing",
-                            "original_text": "We will try to implement this to make it faster.",
-                            "correction": "This implementation aims to optimize execution efficiency.",
-                            "comment": "Avoid colloquial language and passive intent descriptors. Use formal target-oriented statements.",
-                            "severity": "medium"
-                        }
-                    ]
-                },
-                {
-                    "name": "Chapter 3: Methodology",
-                    "score": 75,
-                    "findings": [
-                        {
-                            "category": "methodological_rigor",
-                            "original_text": "We picked some parameters arbitrarily.",
-                            "correction": "Initial parameters were selected based on heuristic tuning and pilot experiment benchmarks.",
-                            "comment": "Arbitrary selection decreases credibility. Describe the empirical process or heuristics used.",
-                            "severity": "high"
-                        }
-                    ]
-                }
-            ]
-        }
-        
-        critique2_report = {
-            "summary": {
-                "overall_score": 74,
-                "metrics": {
-                    "academic_writing": 70,
-                    "methodological_rigor": 65,
-                    "literature_review": 80,
-                    "structure_coherence": 81
-                },
-                "general_critique": (
-                    "The thesis provides a useful survey of sandbox engines, specifically focusing on Judge0. However, "
-                    "the experimental setup is lacks detailed resource constraints benchmarks, and the thesis relies on "
-                    "basic performance measurements."
-                )
-            },
-            "chapters": [
-                {
-                    "name": "Chapter 2: Literature Review",
-                    "score": 80,
-                    "findings": [
-                        {
-                            "category": "literature_review",
-                            "original_text": "There are some works by Smith (2018) doing this, and also Jones (2020).",
-                            "correction": "Smith (2018) and Jones (2020) pioneered parallel sandboxing platforms, establishing...",
-                            "comment": "Synthesize the papers together. Do not write a simple laundry list of citations.",
-                            "severity": "medium"
-                        }
-                    ]
-                }
-            ]
-        }
-
-        critique_1 = ThesisCritique(
-            lecturer_id=lecturer.id,
-            candidate_name="Jane Student",
-            programme="M.Sc. Computer Science",
-            thesis_title="Deep Learning in Code Analysis",
-            filename="thesis_paper.pdf",
-            status=CritiqueStatus.completed,
-            report_json=json.dumps(critique1_report),
-            created_at=now - timedelta(days=2)
-        )
-        
-        critique_2 = ThesisCritique(
-            lecturer_id=lecturer.id,
-            candidate_name="Kelvin Ankomah",
-            programme="B.Sc. Computer Engineering",
-            thesis_title="Automatic Grading with Sandboxed Environments",
-            filename="sandbox_grading_v3.docx",
-            status=CritiqueStatus.completed,
-            report_json=json.dumps(critique2_report),
-            created_at=now - timedelta(hours=3)
-        )
-
-        session.add_all([critique_1, critique_2])
-        await session.commit()
-
-        print("--- SEEDING COMPLETED SUCCESSFULLY ---")
-
-if __name__ == '__main__':
-    asyncio.run(seed_db())
+if __name__ == "__main__":
+    asyncio.run(seed_rubric())

@@ -1,1156 +1,949 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Upload, 
-  Trash2, 
-  Loader2, 
-  FileText, 
-  CheckCircle, 
-  XCircle, 
-  AlertTriangle, 
-  BookOpen, 
-  ChevronRight, 
-  FileCheck,
-  Grid,
-  List,
-  Sparkles,
-  ArrowRight,
-  RefreshCw,
-  Plus,
-  Minus,
-  MessageSquare,
-  AlertCircle,
-  Download,
-  ChevronDown,
-  ChevronUp,
-  ArrowLeft,
-  Award,
-  ThumbsUp,
-  ShieldAlert,
-  Check,
-  Calendar
+import {
+  Upload, Trash2, Loader2, FileText, CheckCircle, XCircle, AlertTriangle,
+  BookOpen, ChevronRight, Sparkles, RefreshCw, Plus, Download, ArrowLeft,
+  Award, ShieldAlert, Check, Calendar, Edit3, Save, Eye, Settings,
+  BarChart3, Layers, Scale, ClipboardList,
 } from 'lucide-react';
-import { uploadThesis, listTheses, getThesisDetail, deleteThesis, exportThesisDocx } from '../../api/thesis.api';
+import {
+  uploadThesis, listSubmissions, getSubmission, deleteSubmission,
+  triggerAssessment, getResults, overrideResult, getReport, updateReport,
+  exportSubmissionDocx, listCriteria, updateCriterion, createExample,
+  listExamples,
+} from '../../api/thesis.api';
 import toast from 'react-hot-toast';
+import ReactMarkdown from 'react-markdown';
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.05 } }
+  show: { opacity: 1, transition: { staggerChildren: 0.05 } },
 };
-
 const itemVariants = {
   hidden: { opacity: 0, y: 10 },
-  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 120 } }
+  show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 120 } },
 };
 
-// Helper: derive qualitative verdict from major_corrections
-function getVerdict(reportJson) {
-  // Prefer the LLM's own overall_recommendation or final_recommendation decision if present
-  const rec = (reportJson?.final_recommendation?.decision || reportJson?.overall_recommendation || '').toLowerCase();
-  if (rec.includes('reject')) return 'major-corrections';
-  if (rec.includes('major')) return 'major-corrections';
-  if (rec.includes('accept') && !rec.includes('correction')) return 'ready';
-  // Fallback: count severity of major_corrections
-  const corrections = reportJson?.major_corrections || [];
-  const highCount = corrections.filter(c => c.severity?.toLowerCase() === 'high').length;
-  if (highCount > 0) return 'major-corrections';
-  if (corrections.length > 0) return 'needs-corrections';
-  return 'ready';
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN PAGE — tab-based layout
+// ═══════════════════════════════════════════════════════════════════════════
 
-// Helper: count correction summary from major_corrections
-function getFindingCounts(reportJson) {
-  const corrections = reportJson?.major_corrections || [];
-  return {
-    total: corrections.length,
-    high: corrections.filter(c => c.severity?.toLowerCase() === 'high').length,
-    medium: corrections.filter(c => c.severity?.toLowerCase() === 'medium').length,
-    low: corrections.filter(c => c.severity?.toLowerCase() === 'low').length,
-  };
-}
-
-// Helper: is this a wording/phrasing category (diff format) vs a substance category (issue layout)
-const DIFF_CATEGORIES = new Set(['academic_writing', 'structure_coherence']);
-
-// Finding card: two layouts depending on category type
-function FindingCard({ f, showChapter, getCategoryLabel, getSeverityBadgeClass, getTagIcon }) {
-  const useDiff = DIFF_CATEGORIES.has(f.category);
+export function ThesisCritiquePage() {
+  const [tab, setTab] = useState('submissions');
+  const tabs = [
+    { key: 'submissions', label: 'Submissions', icon: FileText },
+    { key: 'rubric', label: 'Rubric Editor', icon: Scale },
+    { key: 'examples', label: 'Graded Examples', icon: ClipboardList },
+  ];
 
   return (
-    <div className="border border-default/80 p-5 bg-[var(--bg-input)]/10 rounded-xl space-y-4 hover:border-default transition-colors relative group">
-      {/* Top-right badges */}
-      <div className="absolute top-4 right-4 flex items-center gap-2 flex-wrap justify-end max-w-[55%]">
-        {showChapter && f.chapterName && (
-          <span className="text-[9px] font-mono bg-brand-purple/10 text-brand-purple border border-brand-purple/20 px-2 py-0.5 rounded-full font-bold">
-            {f.chapterName}
-          </span>
-        )}
-        <span className={`text-[8px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${getSeverityBadgeClass(f.severity)}`}>
-          {f.severity} Priority
-        </span>
+    <div className="min-h-screen p-4 md:p-8">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-[var(--text-primary)] flex items-center gap-3">
+          <Sparkles className="w-7 h-7 text-brand-blue" />
+          Thesis Assessment System
+        </h1>
+        <p className="text-[var(--text-secondary)] mt-1 text-sm">
+          Rubric-grounded multi-agent assessment pipeline
+        </p>
+      </motion.div>
+
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-6 bg-[var(--bg-secondary)] rounded-xl p-1 max-w-fit">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              tab === t.key
+                ? 'bg-brand-blue text-white shadow-md'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+            }`}
+          >
+            <t.icon className="w-4 h-4" />
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Category label */}
-      <div className="flex items-center gap-2 pb-1 border-b border-default/30 max-w-[60%]">
-        <span className="text-[9px] font-mono bg-[var(--bg-elevated)] border border-default px-2 py-0.5 rounded uppercase tracking-wider text-[var(--text-secondary)]">
-          {getCategoryLabel(f.category)}
-        </span>
-      </div>
-
-      {useDiff ? (
-        /* ── DIFF LAYOUT: academic_writing / structure_coherence ──────────── */
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-1 text-[9px] font-mono font-semibold uppercase text-red-400">
-                <Minus size={10} />
-                <span>Draft text:</span>
-              </div>
-              <p className="bg-red-500/5 text-red-200 border border-red-500/10 p-3 rounded-lg font-mono text-xs break-words whitespace-pre-wrap leading-relaxed shadow-inner">
-                "{f.original_text}"
-              </p>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-1 text-[9px] font-mono font-semibold uppercase text-emerald-400">
-                <Plus size={10} />
-                <span>Suggested correction:</span>
-              </div>
-              <p className="bg-emerald-500/5 text-emerald-200 border border-emerald-500/10 p-3 rounded-lg font-mono text-xs break-words whitespace-pre-wrap leading-relaxed shadow-inner">
-                "{f.correction}"
-              </p>
-            </div>
-          </div>
-
-          {f.why_it_matters && (
-            <div className="text-xs text-[var(--text-secondary)] bg-pink-500/[0.02] border border-pink-500/10 p-3 rounded-lg flex items-start gap-2">
-              <ShieldAlert size={14} className="text-pink-400 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <strong className="text-pink-400 font-semibold font-mono text-[9px] uppercase tracking-wider">Why It Matters: </strong>
-                <span className="italic">{f.why_it_matters}</span>
-              </div>
-            </div>
-          )}
-
-          <div className="text-xs text-[var(--text-secondary)] bg-[var(--bg-elevated)]/60 border border-default p-3 rounded-lg flex items-start gap-2">
-            <MessageSquare size={13} className="text-brand-blue shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              <strong className="text-[var(--text-primary)] font-semibold font-mono text-[9px] uppercase tracking-wider">Analysis: </strong>
-              <span>{f.comment}</span>
-            </div>
-          </div>
-        </>
-      ) : (
-        /* ── PLAIN LAYOUT: methodological_rigor / literature_review ──────── */
-        <div className="space-y-3">
-          {/* Issue */}
-          <div className="space-y-1">
-            <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-secondary)]">Issue</span>
-            <p className="text-xs text-[var(--text-primary)] leading-relaxed">{f.comment}</p>
-          </div>
-
-          {/* Why It Matters */}
-          {f.why_it_matters && (
-            <div className="bg-pink-500/[0.03] border border-pink-500/15 rounded-lg p-3 space-y-0.5">
-              <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
-                <ShieldAlert size={11} />
-                Why It Matters
-              </span>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed italic">{f.why_it_matters}</p>
-            </div>
-          )}
-
-          {/* Required Correction */}
-          {f.correction && (
-            <div className="bg-emerald-500/[0.03] border border-emerald-500/15 rounded-lg p-3 space-y-0.5">
-              <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                <Check size={11} strokeWidth={2.5} />
-                Required Correction
-              </span>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{f.correction}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Applies-to tags — shown for both layouts */}
-      {f.applies_to && f.applies_to.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-default/20">
-          <span className="text-[8px] font-mono text-[var(--text-muted)] uppercase tracking-wider mr-1">Applies to:</span>
-          {f.applies_to.map((tag, tagIdx) => (
-            <span
-              key={tagIdx}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[var(--bg-elevated)] border border-default text-[9px] font-mono text-[var(--text-secondary)] capitalize"
-            >
-              {getTagIcon(tag)}
-              <span>{tag}</span>
-            </span>
-          ))}
-        </div>
-      )}
+      <AnimatePresence mode="wait">
+        {tab === 'submissions' && <SubmissionsTab key="sub" />}
+        {tab === 'rubric' && <RubricTab key="rub" />}
+        {tab === 'examples' && <ExamplesTab key="ex" />}
+      </AnimatePresence>
     </div>
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBMISSIONS TAB
+// ═══════════════════════════════════════════════════════════════════════════
 
-export function ThesisCritiquePage() {
-  const [activeScreen, setActiveScreen] = useState('list'); // 'list' | 'upload' | 'report' | 'processing'
-  const [critiques, setCritiques] = useState([]);
-  const [selectedCritique, setSelectedCritique] = useState(null);
-  const [selectedDetails, setSelectedDetails] = useState(null);
-  const [loadingList, setLoadingList] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [viewMode, setViewMode] = useState('category'); // 'category' or 'chapter'
-  const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
-  const [dragOver, setDragOver] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  
-  // Collapse state for optional fields
-  const [detailsOpen, setDetailsOpen] = useState(false);
+function SubmissionsTab() {
+  const [subs, setSubs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showUpload, setShowUpload] = useState(false);
+  const [selected, setSelected] = useState(null); // submission id for detail view
 
-  // Form states
-  const [candidateName, setCandidateName] = useState('');
-  const [programme, setProgramme] = useState('');
-  const [thesisTitle, setThesisTitle] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
-
-  const fileInputRef = useRef(null);
-
-  // Timed progress states
-  const [processingTime, setProcessingTime] = useState(0);
-  const progressSteps = [
-    { label: "Reading document", desc: "Extracting text structure and metadata formatting" },
-    { label: "Reviewing chapters", desc: "Analyzing grammar, style, and methodological claims" },
-    { label: "Writing report", desc: "Compiling critiques, strengths, and priority actions" }
-  ];
-
-  const getRelativeTime = (dateStr) => {
-    if (!dateStr) return '';
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const date = new Date(dateStr);
-      const now = new Date();
-      const diffMs = now - date;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMins / 60);
-      const diffDays = Math.floor(diffHours / 24);
-
-      if (diffMins < 1) return "Just now";
-      if (diffMins < 60) return `${diffMins}m ago`;
-      if (diffHours < 24) return `${diffHours}h ago`;
-      if (diffDays === 1) return "Yesterday";
-      return `${diffDays} days ago`;
-    } catch (e) {
-      return dateStr;
-    }
-  };
-
-  const fetchList = async () => {
-    try {
-      const data = await listTheses();
-      setCritiques(data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load thesis critiques.");
-    } finally {
-      setLoadingList(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchList();
+      const data = await listSubmissions();
+      setSubs(data);
+    } catch { toast.error('Failed to load submissions'); }
+    setLoading(false);
   }, []);
 
-  // Poll for incomplete critiques
-  useEffect(() => {
-    const incomplete = critiques.some(c => c.status === 'pending' || c.status === 'processing');
-    if (!incomplete) return;
+  useEffect(() => { load(); }, [load]);
 
-    const interval = setInterval(async () => {
-      try {
-        const data = await listTheses();
-        setCritiques(data);
-        
-        if (selectedCritique) {
-          const updated = data.find(c => c.id === selectedCritique.id);
-          if (updated) {
-            if (updated.status !== selectedCritique.status) {
-              setSelectedCritique(updated);
-              if (updated.status === 'completed') {
-                const details = await getThesisDetail(updated.id);
-                setSelectedDetails(details);
-                setActiveScreen('report');
-                toast.success(`Thesis review for ${updated.candidateName || 'candidate'} completed!`);
-              } else if (updated.status === 'failed') {
-                setActiveScreen('list');
-                toast.error("Thesis analysis failed.");
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Polling error", err);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [critiques, selectedCritique]);
-
-  // Timed progress counter for loading screen
-  useEffect(() => {
-    let interval;
-    if (activeScreen === 'processing') {
-      setProcessingTime(0);
-      interval = setInterval(() => {
-        setProcessingTime((t) => t + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [activeScreen]);
-
-  const handleSelectCritique = async (critique) => {
-    setSelectedCritique(critique);
-    setSelectedDetails(null);
-    if (critique.status === 'completed') {
-      try {
-        const details = await getThesisDetail(critique.id);
-        setSelectedDetails(details);
-        setActiveScreen('report');
-      } catch (err) {
-        console.error(err);
-        toast.error("Failed to load critique report details.");
-      }
-    } else if (critique.status === 'failed') {
-      toast.error("This critique has failed processing.");
-      setActiveScreen('list');
-    } else {
-      setActiveScreen('processing');
-    }
-  };
-
-  const handleDelete = async (id, e) => {
-    e.stopPropagation();
-    if (!window.confirm("Are you sure you want to delete this critique report?")) return;
-
-    try {
-      await deleteThesis(id);
-      toast.success("Critique report deleted.");
-      if (selectedCritique?.id === id) {
-        setSelectedCritique(null);
-        setSelectedDetails(null);
-        setActiveScreen('list');
-      }
-      fetchList();
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to delete critique report.");
-    }
-  };
-
-  const handleExportDocx = async (id, title) => {
-    setExporting(true);
-    try {
-      await exportThesisDocx(id, title);
-      toast.success("Critique report exported as DOCX.");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to export report as DOCX.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  const handleUploadSubmit = async (e) => {
-    e.preventDefault();
-    if (!selectedFile) {
-      toast.error("Please select a thesis document.");
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("candidateName", candidateName);
-    formData.append("programme", programme);
-    formData.append("thesisTitle", thesisTitle);
-    formData.append("file", selectedFile);
-
-    setUploading(true);
-    setActiveScreen('processing');
-    setProcessingTime(0);
-    try {
-      const newCritique = await uploadThesis(formData);
-      toast.success("Thesis uploaded successfully! Processing started.");
-      setCandidateName('');
-      setProgramme('');
-      setThesisTitle('');
-      setSelectedFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      
-      setSelectedCritique(newCritique);
-      setSelectedDetails(null);
-      fetchList();
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to upload thesis.");
-      setActiveScreen('upload');
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
-    }
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = () => {
-    setDragOver(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (['pdf', 'docx', 'doc'].includes(ext)) {
-        setSelectedFile(file);
-      } else {
-        toast.error("Only PDF and DOCX files are allowed.");
-      }
-    }
-  };
-
-  const getCorrectionsByCategory = (reportJson) => {
-    const grouped = {
-      academic_writing: [],
-      methodological_rigor: [],
-      literature_review: [],
-      structure_coherence: []
-    };
-    (reportJson?.major_corrections || []).forEach(c => {
-      const cat = c.category || 'academic_writing';
-      if (grouped[cat]) grouped[cat].push(c);
-    });
-    return grouped;
-  };
-
-  const getSeverityBadgeClass = (sev) => {
-    switch (sev?.toLowerCase()) {
-      case 'high': return 'bg-red-500/10 text-red-400 border border-red-500/20';
-      case 'medium': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
-      case 'low':
-      default: return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
-    }
-  };
-
-  const getCategoryLabel = (cat) => {
-    switch (cat) {
-      case 'academic_writing': return 'Academic Writing';
-      case 'methodological_rigor': return 'Methodological Rigor';
-      case 'literature_review': return 'Literature Review';
-      case 'structure_coherence': return 'Structure & Coherence';
-      default: return cat;
-    }
-  };
-
-  const getTagIcon = (tag) => {
-    switch (tag.toLowerCase()) {
-      case 'abstract': return <FileText size={10} className="text-brand-blue" />;
-      case 'table': return <Grid size={10} className="text-brand-purple" />;
-      case 'references': return <BookOpen size={10} className="text-emerald-400" />;
-      case 'section': return <List size={10} className="text-pink-400" />;
-      default: return <Sparkles size={10} className="text-amber-400" />;
-    }
-  };
-
-  const correctionsByCategory = selectedDetails?.reportJson ? getCorrectionsByCategory(selectedDetails.reportJson) : {};
+  if (selected) {
+    return <SubmissionDetail id={selected} onBack={() => { setSelected(null); load(); }} />;
+  }
 
   return (
-    <motion.div 
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="space-y-6 pb-12 w-full max-w-6xl mx-auto"
+    <motion.div variants={containerVariants} initial="hidden" animate="show">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Thesis Submissions</h2>
+        <button
+          onClick={() => setShowUpload(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+        >
+          <Upload className="w-4 h-4" /> Upload Thesis
+        </button>
+      </div>
+
+      {showUpload && (
+        <UploadForm
+          onClose={() => setShowUpload(false)}
+          onUploaded={() => { setShowUpload(false); load(); }}
+        />
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-brand-blue" />
+        </div>
+      ) : subs.length === 0 ? (
+        <div className="text-center py-20 text-[var(--text-secondary)]">
+          <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>No submissions yet. Upload a thesis to get started.</p>
+        </div>
+      ) : (
+        <motion.div variants={containerVariants} className="grid gap-3">
+          {subs.map((s) => (
+            <motion.div
+              key={s.id}
+              variants={itemVariants}
+              onClick={() => setSelected(s.id)}
+              className="flex items-center justify-between p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)] cursor-pointer hover:border-brand-blue/50 transition-all group"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                  s.status === 'completed' ? 'bg-green-500/10 text-green-400' :
+                  s.status === 'assessing' ? 'bg-blue-500/10 text-blue-400' :
+                  s.status === 'reviewed' ? 'bg-purple-500/10 text-purple-400' :
+                  'bg-yellow-500/10 text-yellow-400'
+                }`}>
+                  {s.status === 'completed' ? <CheckCircle className="w-5 h-5" /> :
+                   s.status === 'assessing' ? <Loader2 className="w-5 h-5 animate-spin" /> :
+                   s.status === 'reviewed' ? <Award className="w-5 h-5" /> :
+                   <FileText className="w-5 h-5" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-[var(--text-primary)] truncate">
+                    {s.title || s.filePath || 'Untitled'}
+                  </p>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    {s.studentName || 'Unknown student'} · {s.programme || ''} · {new Date(s.submittedAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={s.status} />
+                <ChevronRight className="w-4 h-4 text-[var(--text-secondary)] group-hover:text-brand-blue transition-colors" />
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+
+function StatusBadge({ status }) {
+  const styles = {
+    pending: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    assessing: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    completed: 'bg-green-500/10 text-green-400 border-green-500/20',
+    reviewed: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+  };
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full border ${styles[status] || styles.pending}`}>
+      {status}
+    </span>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UPLOAD FORM
+// ═══════════════════════════════════════════════════════════════════════════
+
+function UploadForm({ onClose, onUploaded }) {
+  const [file, setFile] = useState(null);
+  const [studentName, setStudentName] = useState('');
+  const [title, setTitle] = useState('');
+  const [programme, setProgramme] = useState('');
+  const [institution, setInstitution] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) return toast.error('Select a thesis file');
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      if (studentName) fd.append('studentName', studentName);
+      if (title) fd.append('title', title);
+      if (programme) fd.append('programme', programme);
+      if (institution) fd.append('institution', institution);
+      await uploadThesis(fd);
+      toast.success('Thesis uploaded successfully');
+      onUploaded();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Upload failed');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      className="mb-6 p-5 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)]"
     >
-      {/* Header Banner */}
-      <motion.div variants={itemVariants} className="glass p-6 md:p-8 relative overflow-hidden flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-default/60">
-        <div className="absolute -top-24 -right-24 w-64 h-64 bg-brand-blue/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-brand-purple/10 rounded-full blur-3xl pointer-events-none"></div>
-        
-        <div className="space-y-2 max-w-2xl relative z-10">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-blue opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-blue"></span>
-            </span>
-            <span className="text-[10px] font-mono text-[var(--text-secondary)] uppercase tracking-[0.25em] font-semibold">AI Dissertation Analytics Engine</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)]">
-            Thesis Critique Suite
-          </h1>
-          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-            Audit student thesis drafts. Submit documents to extract insights, detect grammatical inconsistencies, verify methodological rigor, and structure literature arguments.
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-[var(--text-primary)]">Upload Thesis</h3>
+        <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
+      </div>
+      <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-4">
+        <div
+          onClick={() => fileRef.current?.click()}
+          className="md:col-span-2 border-2 border-dashed border-[var(--border-primary)] rounded-lg p-6 text-center cursor-pointer hover:border-brand-blue/50 transition-colors"
+        >
+          <Upload className="w-8 h-8 mx-auto mb-2 text-[var(--text-secondary)]" />
+          <p className="text-sm text-[var(--text-secondary)]">
+            {file ? file.name : 'Click or drag to upload PDF/DOCX'}
+          </p>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.docx,.doc"
+            onChange={(e) => setFile(e.target.files[0])}
+            className="hidden"
+          />
+        </div>
+        <Input label="Student Name" value={studentName} onChange={setStudentName} placeholder="Auto-extracted if blank" />
+        <Input label="Thesis Title" value={title} onChange={setTitle} placeholder="Auto-extracted if blank" />
+        <Input label="Programme" value={programme} onChange={setProgramme} placeholder="e.g. MSc Computer Science" />
+        <Input label="Institution" value={institution} onChange={setInstitution} placeholder="e.g. KNUST" />
+        <div className="md:col-span-2 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={uploading || !file}
+            className="flex items-center gap-2 px-5 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm font-medium"
+          >
+            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            Upload
+          </button>
+        </div>
+      </form>
+    </motion.div>
+  );
+}
+
+function Input({ label, value, onChange, placeholder, type = 'text' }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg text-sm text-[var(--text-primary)] focus:border-brand-blue focus:outline-none"
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUBMISSION DETAIL — results, report, overrides
+// ═══════════════════════════════════════════════════════════════════════════
+
+function SubmissionDetail({ id, onBack }) {
+  const [sub, setSub] = useState(null);
+  const [results, setResults] = useState([]);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [assessing, setAssessing] = useState(false);
+  const [editingReport, setEditingReport] = useState(false);
+  const [editedText, setEditedText] = useState('');
+  const pollRef = useRef();
+
+  const load = useCallback(async () => {
+    try {
+      const [s, r, rp] = await Promise.all([
+        getSubmission(id),
+        getResults(id).catch(() => []),
+        getReport(id).catch(() => null),
+      ]);
+      setSub(s);
+      setResults(r);
+      setReport(rp);
+      if (rp?.narrativeReportEdited) setEditedText(rp.narrativeReportEdited);
+      else if (rp?.narrativeReport) setEditedText(rp.narrativeReport);
+      return s;
+    } catch {
+      toast.error('Failed to load submission');
+      return null;
+    }
+  }, [id]);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const s = await load();
+      setLoading(false);
+      // Poll while assessing
+      if (s?.status === 'assessing' || s?.status === 'pending') {
+        pollRef.current = setInterval(async () => {
+          const fresh = await load();
+          if (fresh?.status === 'completed' || fresh?.status === 'reviewed') {
+            clearInterval(pollRef.current);
+            toast.success('Assessment complete!');
+          }
+        }, 5000);
+      }
+    })();
+    return () => clearInterval(pollRef.current);
+  }, [load]);
+
+  const handleAssess = async () => {
+    setAssessing(true);
+    try {
+      await triggerAssessment(id);
+      toast.success('Assessment started — processing...');
+      const s = await load();
+      pollRef.current = setInterval(async () => {
+        const fresh = await load();
+        if (fresh?.status === 'completed' || fresh?.status === 'reviewed') {
+          clearInterval(pollRef.current);
+          toast.success('Assessment complete!');
+          setAssessing(false);
+        }
+      }, 5000);
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to start assessment');
+      setAssessing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this submission and all its results?')) return;
+    try {
+      await deleteSubmission(id);
+      toast.success('Deleted');
+      onBack();
+    } catch { toast.error('Delete failed'); }
+  };
+
+  const handleSaveReport = async () => {
+    try {
+      await updateReport(id, { narrativeReportEdited: editedText });
+      toast.success('Report saved');
+      setEditingReport(false);
+      await load();
+    } catch { toast.error('Failed to save report'); }
+  };
+
+  const handleExport = async () => {
+    try {
+      await exportSubmissionDocx(id, sub?.title || 'thesis');
+      toast.success('Exported');
+    } catch { toast.error('Export failed'); }
+  };
+
+  const weightedScore = results.length > 0
+    ? results.reduce((sum, r) => {
+        const score = r.supervisorOverrideScore ?? r.aiScore;
+        return sum + (r.criterionWeight || 0) * score;
+      }, 0)
+    : null;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-brand-blue" />
+      </div>
+    );
+  }
+
+  if (!sub) return <p className="text-[var(--text-secondary)]">Not found</p>;
+
+  const reportText = report?.narrativeReportEdited || report?.narrativeReport;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="p-2 rounded-lg hover:bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] truncate">{sub.title || 'Untitled'}</h2>
+          <p className="text-sm text-[var(--text-secondary)]">
+            {sub.studentName || 'Unknown'} · {sub.programme || ''} · {sub.institution || ''}
           </p>
         </div>
+        <StatusBadge status={sub.status} />
+      </div>
 
-        <div className="flex items-center gap-3 shrink-0 relative z-10 bg-[var(--bg-elevated)]/60 border border-default p-3 rounded-xl backdrop-blur">
-          <Sparkles className="text-brand-blue animate-pulse" size={20} />
-          <div className="text-left font-mono">
-            <p className="text-xs font-semibold text-[var(--text-primary)]">Powered by LLM</p>
-            <p className="text-[9px] text-[var(--text-secondary)]">Deep Semantic Inspection</p>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Main Screen Router */}
-      <AnimatePresence mode="wait">
-        
-        {/* SCREEN 1: LIST / HISTORY SCREEN */}
-        {activeScreen === 'list' && (
-          <motion.div 
-            key="list"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="space-y-6"
+      {/* Action bar */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {(sub.status === 'pending' || sub.status === 'completed' || sub.status === 'reviewed') && (
+          <button
+            onClick={handleAssess}
+            disabled={assessing || sub.status === 'assessing'}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 text-sm font-medium"
           >
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-bold font-mono uppercase tracking-wider text-[var(--text-primary)]">
-                Thesis Evaluations
-              </h2>
-              <button
-                onClick={() => setActiveScreen('upload')}
-                className="btn-primary flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg shadow-lg hover:shadow-[0_0_15px_rgba(37,99,235,0.25)] transition-all"
-              >
-                <Plus size={14} />
-                <span>Analyze New Thesis</span>
-              </button>
-            </div>
-
-            {loadingList ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3 border border-default rounded-xl bg-[var(--bg-elevated)]/10">
-                <Loader2 className="animate-spin text-brand-blue" size={28} />
-                <span className="text-[10px] text-[var(--text-muted)] font-mono uppercase tracking-widest">Loading history...</span>
-              </div>
-            ) : critiques.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 border border-default rounded-xl bg-[var(--bg-elevated)]/10 space-y-4">
-                <AlertCircle className="text-[var(--text-muted)] opacity-30" size={32} />
-                <div className="text-center">
-                  <p className="text-sm font-semibold text-[var(--text-secondary)]">No Evaluations Found</p>
-                  <p className="text-xs text-[var(--text-muted)] mt-1">Upload a thesis draft to generate your first AI review report.</p>
-                </div>
-              </div>
-            ) : (
-              <div className="border border-default rounded-xl overflow-hidden bg-[var(--bg-elevated)]/10 backdrop-blur-sm">
-                <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-default text-[10px] font-mono uppercase tracking-wider text-[var(--text-secondary)] font-bold bg-[var(--bg-input)]/40">
-                  <div className="col-span-3">Candidate</div>
-                  <div className="col-span-5">Thesis Title</div>
-                  <div className="col-span-2">Date Added</div>
-                  <div className="col-span-1.5 text-center">Status</div>
-                  <div className="col-span-0.5"></div>
-                </div>
-
-                <div className="divide-y divide-default/40">
-                  {critiques.map((c) => (
-                    <div 
-                      key={c.id}
-                      onClick={() => handleSelectCritique(c)}
-                      className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-brand-blue/[0.02] cursor-pointer transition-colors group"
-                    >
-                      <div className="col-span-3 space-y-0.5">
-                        <p className="font-semibold text-xs text-[var(--text-primary)] truncate">{c.candidateName}</p>
-                        <p className="text-[9px] font-mono text-[var(--text-muted)] truncate">{c.programme}</p>
-                      </div>
-                      <div className="col-span-5 text-xs text-[var(--text-secondary)] truncate font-serif italic">
-                        {c.thesisTitle}
-                      </div>
-                      <div className="col-span-2 flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] font-mono">
-                        <Calendar size={11} />
-                        <span>{getRelativeTime(c.createdAt)}</span>
-                      </div>
-                      <div className="col-span-1.5 flex justify-center">
-                        {c.status === 'completed' && (
-                          <span className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            Ready
-                          </span>
-                        )}
-                        {(c.status === 'pending' || c.status === 'processing') && (
-                          <span className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-brand-purple/10 text-brand-purple border border-brand-purple/20 flex items-center gap-1">
-                            <span className="h-1 w-1 rounded-full bg-brand-purple animate-ping"></span>
-                            <span>Analyzing</span>
-                          </span>
-                        )}
-                        {c.status === 'failed' && (
-                          <span className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-red-500/10 text-red-400 border border-red-500/20">
-                            Failed
-                          </span>
-                        )}
-                      </div>
-                      <div className="col-span-0.5 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={(e) => handleDelete(c.id, e)}
-                          className="text-[var(--text-muted)] hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
-                          title="Delete report"
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </motion.div>
+            {assessing || sub.status === 'assessing' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {sub.status === 'pending' ? 'Run Assessment' : 'Re-assess'}
+          </button>
         )}
+        {reportText && (
+          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg text-sm text-[var(--text-primary)] hover:border-brand-blue/50">
+            <Download className="w-4 h-4" /> Export DOCX
+          </button>
+        )}
+        <button onClick={handleDelete} className="flex items-center gap-2 px-4 py-2 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 text-sm ml-auto">
+          <Trash2 className="w-4 h-4" /> Delete
+        </button>
+      </div>
 
-        {/* SCREEN 2: UPLOAD SCREEN */}
-        {activeScreen === 'upload' && (
-          <motion.div 
-            key="upload"
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            className="max-w-2xl mx-auto space-y-6"
-          >
-            <button 
-              onClick={() => setActiveScreen('list')}
-              className="inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <ArrowLeft size={14} />
-              <span>Back to History</span>
-            </button>
-            
-            <div className="text-center space-y-2">
-              <h2 className="text-2xl font-bold text-[var(--text-primary)] font-serif">Upload Thesis for Critique</h2>
-              <p className="text-xs text-[var(--text-secondary)] max-w-md mx-auto">
-                Select or drag a thesis PDF or DOCX file to execute deep AI diagnostics. Extracted text is checked for spelling, grammar, academic tone, and methodological rigor.
+      {sub.status === 'assessing' && (
+        <div className="flex items-center gap-3 p-4 mb-6 bg-blue-500/10 border border-blue-500/20 rounded-xl">
+          <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
+          <p className="text-sm text-blue-300">Assessment in progress — scoring 7 criteria with verifier checks...</p>
+        </div>
+      )}
+
+      {/* Weighted score */}
+      {weightedScore !== null && results.length > 0 && (
+        <div className="p-4 mb-6 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)]">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-[var(--text-secondary)]">Weighted Score</p>
+              <p className="text-3xl font-bold text-[var(--text-primary)]">
+                {weightedScore.toFixed(2)} <span className="text-lg text-[var(--text-secondary)]">/ 5.0</span>
               </p>
             </div>
+            <div className="text-right">
+              <p className="text-sm text-[var(--text-secondary)]">Scaled (0-100)</p>
+              <p className="text-3xl font-bold text-brand-blue">{(weightedScore * 20).toFixed(0)}</p>
+            </div>
+          </div>
+          <div className="mt-3 w-full bg-[var(--bg-tertiary)] rounded-full h-2">
+            <div
+              className="h-2 rounded-full bg-gradient-to-r from-red-500 via-yellow-500 to-green-500"
+              style={{ width: `${(weightedScore / 5) * 100}%` }}
+            />
+          </div>
+        </div>
+      )}
 
-            <form onSubmit={handleUploadSubmit} className="glass p-6 md:p-8 border-default/60 space-y-6">
-              {/* Centered Drop Zone */}
-              <div className="space-y-1.5 text-center">
-                <div 
-                  className={`border-2 border-dashed rounded-xl transition-all duration-300 p-10 text-center cursor-pointer relative ${
-                    dragOver 
-                      ? 'border-brand-blue bg-brand-blue/5 shadow-[0_0_15px_rgba(59,130,246,0.15)]' 
-                      : 'border-default hover:border-brand-blue/40 bg-[var(--bg-input)]/20'
-                  }`}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                >
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    accept=".pdf,.docx,.doc" 
-                    onChange={handleFileChange}
-                  />
-                  <FileText className={`mx-auto mb-3 transition-transform duration-300 ${dragOver ? 'scale-110 text-brand-blue' : 'text-[var(--text-muted)]'}`} size={36} />
-                  
-                  {selectedFile ? (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-brand-blue truncate max-w-sm mx-auto">
-                        {selectedFile.name}
-                      </p>
-                      <p className="text-[10px] text-[var(--text-muted)] font-mono">
-                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        Drag & drop file here or <span className="text-brand-blue font-semibold hover:underline">Browse</span>
-                      </p>
-                      <p className="text-[9px] text-[var(--text-muted)] font-mono">PDF, DOCX up to 25MB</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+      {/* Per-criterion results */}
+      {results.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-brand-blue" /> Criterion Scores
+          </h3>
+          <div className="grid gap-3">
+            {results.map((r) => (
+              <CriterionCard key={r.id} result={r} submissionId={id} onOverride={load} />
+            ))}
+          </div>
+        </div>
+      )}
 
-              {/* Collapsible Disclosure Panel */}
-              <div className="border border-default/60 rounded-xl overflow-hidden bg-[var(--bg-input)]/10">
-                <button
-                  type="button"
-                  onClick={() => setDetailsOpen(!detailsOpen)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-[var(--bg-elevated)]/50 hover:bg-[var(--bg-elevated)] transition-colors text-xs font-semibold text-[var(--text-secondary)] font-mono border-b border-default/30"
-                >
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={14} className="text-brand-blue" />
-                    <span>Optional Details (Candidate, Programme, Title)</span>
-                  </div>
-                  {detailsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+      {/* Narrative report */}
+      {reportText && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-brand-blue" /> Narrative Report
+            </h3>
+            <div className="flex gap-2">
+              {!editingReport && (
+                <button onClick={() => setEditingReport(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg hover:border-brand-blue/50 text-[var(--text-secondary)]">
+                  <Edit3 className="w-3 h-3" /> Edit
                 </button>
-                
-                {detailsOpen && (
-                  <div className="p-4 space-y-4 bg-[var(--bg-input)]/5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold font-mono uppercase tracking-wider text-[var(--text-secondary)]">Candidate Name</label>
-                        <input 
-                          type="text" 
-                          className="input bg-[var(--bg-input)] hover:border-default focus:border-brand-blue transition-all"
-                          placeholder="e.g. Mahfuz Abgor Seidu"
-                          value={candidateName}
-                          onChange={(e) => setCandidateName(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[9px] font-bold font-mono uppercase tracking-wider text-[var(--text-secondary)]">Degree Programme</label>
-                        <input 
-                          type="text" 
-                          className="input bg-[var(--bg-input)] hover:border-default focus:border-brand-blue transition-all"
-                          placeholder="e.g. M.Sc. Computer Engineering"
-                          value={programme}
-                          onChange={(e) => setProgramme(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[9px] font-bold font-mono uppercase tracking-wider text-[var(--text-secondary)]">Thesis Title</label>
-                      <input 
-                        type="text" 
-                        className="input bg-[var(--bg-input)] hover:border-default focus:border-brand-blue transition-all"
-                        placeholder="e.g. Scalable Assessment Architectures"
-                        value={thesisTitle}
-                        onChange={(e) => setThesisTitle(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button 
-                type="submit" 
-                className="btn-primary w-full justify-center py-3 rounded-lg shadow-lg font-semibold hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-all flex items-center gap-2"
-                disabled={uploading}
-              >
-                <Upload size={16} />
-                <span>Analyze Thesis</span>
-              </button>
-            </form>
-          </motion.div>
-        )}
-
-        {/* SCREEN 3: TIMED PROGRESS MESSAGING SCREEN */}
-        {activeScreen === 'processing' && selectedCritique && (
-          <motion.div 
-            key="processing"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="max-w-2xl mx-auto space-y-6"
-          >
-            <button 
-              onClick={() => setActiveScreen('list')}
-              className="inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <ArrowLeft size={14} />
-              <span>Back to History</span>
-            </button>
-            
-            <div className="glass p-8 text-center border-default/60 space-y-8 relative overflow-hidden">
-              <div className="absolute -top-24 -right-24 w-64 h-64 bg-brand-purple/5 rounded-full blur-3xl pointer-events-none"></div>
-              
-              <div className="relative flex items-center justify-center mx-auto">
-                <div className="w-20 h-20 border-4 border-brand-purple/10 border-t-brand-purple rounded-full animate-spin"></div>
-                <Loader2 className="absolute text-brand-purple animate-pulse" size={28} />
-              </div>
-              
-              <div className="space-y-2 max-w-md mx-auto">
-                <h3 className="text-lg font-serif text-[var(--text-primary)] font-semibold">Running Thesis Diagnostics</h3>
-                <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                  The AI engine is extracting and analyzing the contents of <span className="font-mono font-semibold text-brand-purple">"{selectedCritique.filename}"</span>. This usually takes between 30 to 90 seconds.
-                </p>
-              </div>
-
-              {/* Timed progress list */}
-              <div className="max-w-md mx-auto border border-default/60 rounded-xl p-4 bg-[var(--bg-input)]/10 text-left space-y-3">
-                {progressSteps.map((step, idx) => {
-                  const isCompleted = processingTime > (idx === 0 ? 12 : idx === 1 ? 35 : 9999);
-                  const isInProgress = !isCompleted && (idx === 0 || (idx === 1 && processingTime > 12) || (idx === 2 && processingTime > 35));
-                  const isPending = !isCompleted && !isInProgress;
-                  
-                  return (
-                    <div key={idx} className="flex items-start gap-3">
-                      <div className="mt-0.5 shrink-0">
-                        {isCompleted ? (
-                          <div className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
-                            <Check size={10} strokeWidth={3} />
-                          </div>
-                        ) : isInProgress ? (
-                          <Loader2 size={14} className="text-brand-blue animate-spin" />
-                        ) : (
-                          <div className="h-4 w-4 rounded-full border border-default bg-[var(--bg-elevated)]" />
-                        )}
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className={`text-xs font-semibold ${isCompleted ? 'text-[var(--text-primary)]' : isInProgress ? 'text-brand-blue' : 'text-[var(--text-muted)]'}`}>
-                          {step.label}
-                        </p>
-                        <p className="text-[10px] text-[var(--text-muted)]">
-                          {step.desc}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-purple/10 border border-brand-purple/20 rounded-full">
-                <span className="flex h-1.5 w-1.5 rounded-full bg-brand-purple animate-ping"></span>
-                <span className="text-[9px] font-mono text-brand-purple uppercase tracking-widest font-semibold">
-                  Processing (elapsed: {processingTime}s)
-                </span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* SCREEN 4: DETAILED CRITIQUE REPORT DASHBOARD */}
-        {activeScreen === 'report' && selectedDetails && (
-          <motion.div 
-            key="report"
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="space-y-6"
-          >
-            <button 
-              onClick={() => setActiveScreen('list')}
-              className="inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              <ArrowLeft size={14} />
-              <span>Back to History</span>
-            </button>
-
-            {/* Meta details header card */}
-            <div className="glass p-6 border-default/60 relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="absolute top-0 right-0 p-16 bg-brand-blue/5 rounded-full blur-2xl pointer-events-none"></div>
-              
-              <div className="space-y-3 max-w-[75%] relative z-10">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-mono bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-2 py-0.5 rounded uppercase tracking-wider font-semibold">
-                    Critique Analysis Report
-                  </span>
-                  {(() => {
-                    const verdict = getVerdict(selectedDetails.reportJson);
-                    if (verdict === 'ready') return (
-                      <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-semibold">
-                        Ready
-                      </span>
-                    );
-                    if (verdict === 'major-corrections') return (
-                      <span className="text-[9px] font-mono bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-semibold animate-pulse">
-                        Major Corrections Required
-                      </span>
-                    );
-                    return (
-                      <span className="text-[9px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-semibold">
-                        Needs Corrections
-                      </span>
-                    );
-                  })()}
-                </div>
-                <h2 className="text-2xl font-bold font-serif text-[var(--text-primary)] leading-tight tracking-tight">
-                  {selectedDetails.thesisTitle}
-                </h2>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-[var(--text-secondary)] font-medium">
-                  <div>Candidate: <strong className="text-[var(--text-primary)]">{selectedDetails.candidateName}</strong></div>
-                  <div className="w-1.5 h-1.5 rounded-full bg-[var(--border)] hidden sm:block"></div>
-                  <div>Programme: <strong className="text-[var(--text-primary)]">{selectedDetails.programme}</strong></div>
-                  <div className="w-1.5 h-1.5 rounded-full bg-[var(--border)] hidden sm:block"></div>
-                  <div>File: <span className="font-mono text-[var(--text-muted)]">{selectedDetails.filename}</span></div>
-                </div>
-                <div className="pt-2">
-                  <button
-                    onClick={() => handleExportDocx(selectedDetails.id, selectedDetails.thesisTitle)}
-                    disabled={exporting}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-blue/10 border border-brand-blue/20 hover:bg-brand-blue/20 text-brand-blue transition-all disabled:opacity-50"
-                  >
-                    {exporting ? (
-                      <Loader2 size={13} className="animate-spin" />
-                    ) : (
-                      <Download size={13} />
-                    )}
-                    <span>{exporting ? 'Exporting...' : 'Export DOCX'}</span>
+              )}
+              {editingReport && (
+                <>
+                  <button onClick={() => setEditingReport(false)} className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">Cancel</button>
+                  <button onClick={handleSaveReport} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-blue text-white rounded-lg">
+                    <Save className="w-3 h-3" /> Save
                   </button>
-                </div>
-              </div>
-
-              {/* Findings count summary — real data, no invented scores */}
-              {(() => {
-                const counts = getFindingCounts(selectedDetails.reportJson);
-                return (
-                  <div className="bg-[var(--bg-elevated)]/60 border border-default p-4 rounded-xl relative z-10 shrink-0 shadow-lg space-y-2 min-w-[140px]">
-                    <span className="text-[9px] font-mono text-[var(--text-secondary)] uppercase tracking-wider block">Findings</span>
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-mono text-red-400">High priority</span>
-                        <span className="text-[13px] font-bold font-mono text-[var(--text-primary)]">{counts.high}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-mono text-amber-400">Medium</span>
-                        <span className="text-[13px] font-bold font-mono text-[var(--text-primary)]">{counts.medium}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-mono text-blue-400">Low</span>
-                        <span className="text-[13px] font-bold font-mono text-[var(--text-primary)]">{counts.low}</span>
-                      </div>
-                      <div className="pt-1 border-t border-default flex items-center justify-between gap-3">
-                        <span className="text-[10px] font-mono text-[var(--text-muted)]">Total</span>
-                        <span className="text-[13px] font-bold font-mono text-[var(--text-secondary)]">{counts.total}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+                </>
+              )}
             </div>
-
-            {/* Overall Assessment card */}
-            {selectedDetails.reportJson?.overall_assessment && (
-              <div className="glass p-5 border-default/60 space-y-3 relative overflow-hidden bg-white/[0.01]">
-                <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                  <MessageSquare size={14} className="text-brand-blue" />
-                  <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">
-                    Supervisor's Assessment
-                  </h3>
-                </div>
-                <p className="text-sm text-[var(--text-secondary)] leading-relaxed italic font-serif">
-                  "{selectedDetails.reportJson.overall_assessment}"
-                </p>
-              </div>
-            )}
-
-            {/* Strengths checklist */}
-            <div className="glass p-5 border-default/60 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                <Award size={16} className="text-emerald-400" />
-                <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">
-                  Key Thesis Strengths
-                </h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {selectedDetails.reportJson?.strengths?.map((strength, idx) => (
-                  <div key={idx} className="flex items-start gap-2.5 p-3 rounded-lg bg-emerald-500/[0.01] border border-emerald-500/10">
-                    <div className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400">
-                      <Check size={10} strokeWidth={3} />
-                    </div>
-                    <span className="text-xs text-[var(--text-secondary)] leading-relaxed">{strength}</span>
-                  </div>
-                )) || (
-                  <p className="text-xs text-[var(--text-muted)] italic">No strengths metadata listed.</p>
-                )}
-              </div>
+          </div>
+          {editingReport ? (
+            <textarea
+              value={editedText}
+              onChange={(e) => setEditedText(e.target.value)}
+              rows={25}
+              className="w-full p-4 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-primary)] font-mono focus:border-brand-blue focus:outline-none resize-y"
+            />
+          ) : (
+            <div className="p-5 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)] prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown>{reportText}</ReactMarkdown>
             </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+}
 
-            {/* ── Major Corrections ─────────────────────────────────────────── */}
-            {(selectedDetails.reportJson?.major_corrections?.length > 0) && (
-              <div className="glass p-5 border-default/60 space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-default/50">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert size={15} className="text-red-400" />
-                    <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">Major Corrections Required</h3>
-                  </div>
-                  {/* Category filter pills */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {['all', 'academic_writing', 'methodological_rigor', 'literature_review', 'structure_coherence'].map((cat) => (
-                      <button
-                        key={cat}
-                        onClick={() => setActiveCategoryFilter(cat)}
-                        className={`px-2.5 py-1 text-[9px] font-mono font-bold border rounded-full transition-all ${
-                          activeCategoryFilter === cat
-                            ? 'bg-brand-blue/10 border-brand-blue/30 text-brand-blue'
-                            : 'border-default text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
-                        }`}
-                      >
-                        {cat === 'all' ? 'ALL' : getCategoryLabel(cat).toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {selectedDetails.reportJson.major_corrections
-                    .filter(c => activeCategoryFilter === 'all' || c.category === activeCategoryFilter)
-                    .map((c, idx) => (
-                      <div key={idx} className="border border-default/80 p-5 rounded-xl space-y-3 relative hover:border-default transition-colors">
-                        {/* Severity + category badges */}
-                        <div className="absolute top-4 right-4 flex items-center gap-2">
-                          <span className={`text-[8px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-widest ${getSeverityBadgeClass(c.severity)}`}>
-                            {c.severity} Priority
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 pb-1 border-b border-default/30 max-w-[60%]">
-                          <span className="text-[9px] font-mono bg-[var(--bg-elevated)] border border-default px-2 py-0.5 rounded uppercase tracking-wider text-[var(--text-secondary)]">
-                            {getCategoryLabel(c.category)}
-                          </span>
-                        </div>
-                        {/* Issue */}
-                        <div className="space-y-1">
-                          <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-[var(--text-secondary)]">Issue</span>
-                          <p className="text-xs text-[var(--text-primary)] leading-relaxed">{c.issue}</p>
-                        </div>
-                        {/* Why It Matters */}
-                        {c.why_it_matters && (
-                          <div className="bg-pink-500/[0.03] border border-pink-500/15 rounded-lg p-3 space-y-0.5">
-                            <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1.5">
-                              <ShieldAlert size={11} />
-                              Why It Matters
-                            </span>
-                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed italic">{c.why_it_matters}</p>
-                          </div>
-                        )}
-                        {/* Required Correction */}
-                        {c.required_correction && (
-                          <div className="bg-emerald-500/[0.03] border border-emerald-500/15 rounded-lg p-3 space-y-0.5">
-                            <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                              <Check size={11} strokeWidth={2.5} />
-                              Required Correction
-                            </span>
-                            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{c.required_correction}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  }
-                </div>
-              </div>
+// ═══════════════════════════════════════════════════════════════════════════
+// CRITERION CARD — score, justification, verifier, override
+// ═══════════════════════════════════════════════════════════════════════════
+
+function CriterionCard({ result, submissionId, onOverride }) {
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [score, setScore] = useState(result.supervisorOverrideScore || result.aiScore);
+  const [notes, setNotes] = useState(result.supervisorNotes || '');
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await overrideResult(submissionId, result.criterionId, {
+        supervisorOverrideScore: score,
+        supervisorNotes: notes || null,
+      });
+      toast.success('Override saved');
+      setOverrideOpen(false);
+      onOverride();
+    } catch { toast.error('Failed to save override'); }
+    setSaving(false);
+  };
+
+  const effectiveScore = result.supervisorOverrideScore ?? result.aiScore;
+  const scoreColor = effectiveScore >= 4 ? 'text-green-400' : effectiveScore >= 3 ? 'text-yellow-400' : 'text-red-400';
+  const scoreBg = effectiveScore >= 4 ? 'bg-green-500/10' : effectiveScore >= 3 ? 'bg-yellow-500/10' : 'bg-red-500/10';
+
+  return (
+    <motion.div
+      variants={itemVariants}
+      className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <h4 className="font-semibold text-[var(--text-primary)] text-sm">{result.criterionName}</h4>
+            <span className="text-xs text-[var(--text-secondary)]">(w={result.criterionWeight})</span>
+            {!result.verifierPassed && result.verifierPassed !== null && (
+              <span className="flex items-center gap-1 text-xs text-red-400">
+                <ShieldAlert className="w-3 h-3" /> Flagged
+              </span>
             )}
+          </div>
+          <p className="text-sm text-[var(--text-secondary)] mb-2">{result.aiJustification}</p>
+          {result.citedText && (
+            <blockquote className="border-l-2 border-brand-blue/30 pl-3 text-xs text-[var(--text-secondary)] italic mb-2">
+              "{result.citedText.substring(0, 300)}{result.citedText.length > 300 ? '…' : ''}"
+            </blockquote>
+          )}
+          {result.verifierNotes && (
+            <p className="text-xs text-[var(--text-secondary)]">
+              <span className={result.verifierPassed ? 'text-green-400' : 'text-red-400'}>Verifier:</span> {result.verifierNotes}
+            </p>
+          )}
+          {result.supervisorOverrideScore && (
+            <p className="text-xs text-purple-400 mt-1">
+              ✎ Supervisor override: {result.supervisorOverrideScore}/5
+              {result.supervisorNotes ? ` — ${result.supervisorNotes}` : ''}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold ${scoreBg} ${scoreColor}`}>
+            {effectiveScore}
+          </div>
+          <button
+            onClick={() => setOverrideOpen(!overrideOpen)}
+            className="text-xs text-[var(--text-secondary)] hover:text-brand-blue"
+          >
+            Override
+          </button>
+        </div>
+      </div>
 
-            {/* ── Chapter-by-Chapter Assessment ─────────────────────────────── */}
-            {(selectedDetails.reportJson?.chapter_assessments?.length > 0) && (
-              <div className="glass p-5 border-default/60 space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                  <BookOpen size={15} className="text-brand-purple" />
-                  <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">Chapter-by-Chapter Assessment</h3>
-                </div>
-                <div className="space-y-4">
-                  {selectedDetails.reportJson.chapter_assessments.map((ch, i) => (
-                    <div key={i} className="space-y-2">
-                      <h4 className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-2">
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-purple/10 text-[10px] font-mono font-bold text-brand-purple border border-brand-purple/20">
-                          {i + 1}
-                        </span>
-                        {ch.name}
-                      </h4>
-                      <div className="space-y-1.5 pl-7">
-                        {(ch.observations || []).map((obs, j) => (
-                          <div key={j} className="flex items-start gap-2 text-xs text-[var(--text-secondary)] leading-relaxed">
-                            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-purple/50"></span>
-                            <span>{obs}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+      <AnimatePresence>
+        {overrideOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="mt-3 pt-3 border-t border-[var(--border-primary)]"
+          >
+            <div className="flex items-center gap-3">
+              <div>
+                <label className="text-xs text-[var(--text-secondary)]">Score (1-5)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={5}
+                  value={score}
+                  onChange={(e) => setScore(parseInt(e.target.value) || 1)}
+                  className="w-16 px-2 py-1 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded text-sm text-[var(--text-primary)] text-center"
+                />
               </div>
-            )}
-
-            {/* ── Technical & Methodological Comments ───────────────────────────── */}
-            {(selectedDetails.reportJson?.technical_comments?.length > 0) && (
-              <div className="glass p-5 border-default/60 space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                  <Grid size={14} className="text-amber-400" />
-                  <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">Technical &amp; Methodological Comments</h3>
-                </div>
-                <div className="space-y-1.5">
-                  {selectedDetails.reportJson.technical_comments.map((tc, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-xs text-[var(--text-secondary)] leading-relaxed">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400/60"></span>
-                      <span>{tc}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="flex-1">
+                <label className="text-xs text-[var(--text-secondary)]">Notes</label>
+                <input
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Optional justification"
+                  className="w-full px-2 py-1 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded text-sm text-[var(--text-primary)]"
+                />
               </div>
-            )}
-
-            {/* ── Formatting, Language & Referencing Corrections ────────────────── */}
-            {(selectedDetails.reportJson?.formatting_comments?.length > 0) && (
-              <div className="glass p-5 border-default/60 space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                  <FileText size={14} className="text-blue-400" />
-                  <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">Formatting, Language &amp; Referencing Corrections</h3>
-                </div>
-                <div className="space-y-1.5">
-                  {selectedDetails.reportJson.formatting_comments.map((fc, idx) => (
-                    <div key={idx} className="flex items-start gap-2 text-xs text-[var(--text-secondary)] leading-relaxed">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400/60"></span>
-                      <span>{fc}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Priority Action Plan ──────────────────────────────────────── */}
-            <div className="glass p-5 border-default/60 space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                <List size={16} className="text-brand-purple" />
-                <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">Priority Action Plan</h3>
-              </div>
-              <div className="space-y-2">
-                {(selectedDetails.reportJson?.priority_action_plan || []).map((action, idx) => (
-                  <div key={idx} className="flex items-start gap-3 p-3 rounded-lg bg-[var(--bg-input)]/30 border border-default/60 hover:bg-[var(--bg-input)]/50 transition-colors">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-purple/10 text-[10px] font-mono font-bold text-brand-purple border border-brand-purple/20">
-                      {idx + 1}
-                    </span>
-                    <span className="text-xs text-[var(--text-secondary)] leading-relaxed mt-0.5">{action}</span>
-                  </div>
-                ))}
-                {!(selectedDetails.reportJson?.priority_action_plan?.length) && (
-                  <p className="text-xs text-[var(--text-muted)] italic">No priority action plan listed.</p>
-                )}
-              </div>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-3 py-1.5 bg-brand-blue text-white rounded text-xs font-medium mt-4"
+              >
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+              </button>
             </div>
-
-            {/* ── Final Recommendation ──────────────────────────────────────── */}
-            {selectedDetails.reportJson?.final_recommendation && (
-              <div className="glass p-5 border-default/60 space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-default/50">
-                  <Award size={16} className="text-emerald-400" />
-                  <h3 className="text-xs font-semibold text-[var(--text-primary)] uppercase font-mono tracking-wider">Final Recommendation</h3>
-                </div>
-                <div className="space-y-4">
-                  {selectedDetails.reportJson.final_recommendation.narrative && (
-                    <div className="p-4 rounded-lg bg-[var(--bg-input)]/25 border border-default/50">
-                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        {selectedDetails.reportJson.final_recommendation.narrative}
-                      </p>
-                    </div>
-                  )}
-
-                  {selectedDetails.reportJson.final_recommendation.decision && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold text-[var(--text-primary)]">Decision:</span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
-                        {selectedDetails.reportJson.final_recommendation.decision}
-                      </span>
-                    </div>
-                  )}
-
-                  {selectedDetails.reportJson.final_recommendation.closing_note && (
-                    <div className="p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/15">
-                      <h4 className="text-xs font-semibold text-emerald-400 mb-1">Supervisor's closing note to the supervisee:</h4>
-                      <p className="text-xs text-[var(--text-secondary)] italic leading-relaxed">
-                        "{selectedDetails.reportJson.final_recommendation.closing_note}"
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
           </motion.div>
         )}
       </AnimatePresence>
     </motion.div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RUBRIC EDITOR TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+function RubricTab() {
+  const [criteria, setCriteria] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // criterion id
+  const [formData, setFormData] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        setCriteria(await listCriteria());
+      } catch { toast.error('Failed to load rubric'); }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleEdit = (c) => {
+    setEditing(c.id);
+    setFormData({
+      name: c.name,
+      description: c.description,
+      weight: c.weight,
+      level1Desc: c.level1Desc,
+      level3Desc: c.level3Desc,
+      level5Desc: c.level5Desc,
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateCriterion(editing, formData);
+      toast.success('Criterion updated');
+      setEditing(null);
+      setCriteria(await listCriteria());
+    } catch { toast.error('Failed to save'); }
+    setSaving(false);
+  };
+
+  const totalWeight = criteria.reduce((s, c) => s + (c.weight || 0), 0);
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-brand-blue" /></div>;
+  }
+
+  return (
+    <motion.div variants={containerVariants} initial="hidden" animate="show">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Rubric Criteria</h2>
+        <span className={`text-xs px-2 py-1 rounded ${Math.abs(totalWeight - 1) < 0.01 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+          Total weight: {totalWeight.toFixed(2)}
+        </span>
+      </div>
+
+      {criteria.length === 0 ? (
+        <div className="text-center py-20 text-[var(--text-secondary)]">
+          <Scale className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>No criteria configured. Run the seed script to initialize.</p>
+          <code className="block mt-2 text-xs text-brand-blue">python -m app.seed</code>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {criteria.map((c) => (
+            <motion.div
+              key={c.id}
+              variants={itemVariants}
+              className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)]"
+            >
+              {editing === c.id ? (
+                <div className="space-y-3">
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <Input label="Name" value={formData.name} onChange={(v) => setFormData(p => ({ ...p, name: v }))} />
+                    <Input label="Weight" type="number" value={formData.weight} onChange={(v) => setFormData(p => ({ ...p, weight: parseFloat(v) || 0 }))} />
+                  </div>
+                  <Textarea label="Description" value={formData.description} onChange={(v) => setFormData(p => ({ ...p, description: v }))} />
+                  <Textarea label="Level 1 (Weak)" value={formData.level1Desc} onChange={(v) => setFormData(p => ({ ...p, level1Desc: v }))} />
+                  <Textarea label="Level 3 (Adequate)" value={formData.level3Desc} onChange={(v) => setFormData(p => ({ ...p, level3Desc: v }))} />
+                  <Textarea label="Level 5 (Excellent)" value={formData.level5Desc} onChange={(v) => setFormData(p => ({ ...p, level5Desc: v }))} />
+                  <div className="flex justify-end gap-2">
+                    <button onClick={() => setEditing(null)} className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">Cancel</button>
+                    <button onClick={handleSave} disabled={saving} className="px-4 py-1.5 bg-brand-blue text-white rounded-lg text-xs font-medium">
+                      {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold text-[var(--text-primary)]">{c.name}</h4>
+                      <span className="text-xs px-2 py-0.5 bg-brand-blue/10 text-brand-blue rounded-full">
+                        {(c.weight * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-[var(--text-secondary)] mb-2">{c.description}</p>
+                    <div className="grid md:grid-cols-3 gap-2 text-xs">
+                      <div className="p-2 bg-red-500/5 rounded-lg">
+                        <span className="text-red-400 font-medium">Level 1:</span>
+                        <p className="text-[var(--text-secondary)] mt-0.5">{c.level1Desc?.substring(0, 100)}…</p>
+                      </div>
+                      <div className="p-2 bg-yellow-500/5 rounded-lg">
+                        <span className="text-yellow-400 font-medium">Level 3:</span>
+                        <p className="text-[var(--text-secondary)] mt-0.5">{c.level3Desc?.substring(0, 100)}…</p>
+                      </div>
+                      <div className="p-2 bg-green-500/5 rounded-lg">
+                        <span className="text-green-400 font-medium">Level 5:</span>
+                        <p className="text-[var(--text-secondary)] mt-0.5">{c.level5Desc?.substring(0, 100)}…</p>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => handleEdit(c)} className="p-2 text-[var(--text-secondary)] hover:text-brand-blue rounded-lg hover:bg-[var(--bg-tertiary)]">
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function Textarea({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">{label}</label>
+      <textarea
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        rows={3}
+        className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg text-sm text-[var(--text-primary)] focus:border-brand-blue focus:outline-none resize-y"
+      />
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GRADED EXAMPLES TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ExamplesTab() {
+  const [examples, setExamples] = useState([]);
+  const [criteria, setCriteria] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [filterCrit, setFilterCrit] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [ex, cr] = await Promise.all([
+        listExamples(filterCrit || undefined),
+        listCriteria(),
+      ]);
+      setExamples(ex);
+      setCriteria(cr);
+    } catch { toast.error('Failed to load'); }
+    setLoading(false);
+  }, [filterCrit]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <motion.div variants={containerVariants} initial="hidden" animate="show">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Graded Examples</h2>
+        <div className="flex items-center gap-2">
+          <select
+            value={filterCrit}
+            onChange={(e) => setFilterCrit(e.target.value)}
+            className="px-3 py-1.5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg text-xs text-[var(--text-primary)]"
+          >
+            <option value="">All criteria</option>
+            {criteria.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button
+            onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-brand-blue text-white rounded-lg text-xs font-medium"
+          >
+            <Plus className="w-3 h-3" /> Add Example
+          </button>
+        </div>
+      </div>
+
+      {showAdd && (
+        <AddExampleForm
+          criteria={criteria}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => { setShowAdd(false); load(); }}
+        />
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-brand-blue" /></div>
+      ) : examples.length === 0 ? (
+        <div className="text-center py-20 text-[var(--text-secondary)]">
+          <ClipboardList className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p>No graded examples yet. Add excerpts from real theses to improve scoring accuracy.</p>
+        </div>
+      ) : (
+        <div className="grid gap-3">
+          {examples.map((ex) => (
+            <motion.div key={ex.id} variants={itemVariants} className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs px-2 py-0.5 bg-brand-blue/10 text-brand-blue rounded-full">
+                      {criteria.find(c => c.id === ex.criterionId)?.name || `Criterion #${ex.criterionId}`}
+                    </span>
+                    <span className="text-xs text-[var(--text-secondary)]">
+                      {new Date(ex.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <blockquote className="text-sm text-[var(--text-secondary)] italic border-l-2 border-[var(--border-primary)] pl-3 mb-2">
+                    "{ex.excerpt.substring(0, 250)}{ex.excerpt.length > 250 ? '…' : ''}"
+                  </blockquote>
+                  {ex.justification && (
+                    <p className="text-xs text-[var(--text-secondary)]">{ex.justification}</p>
+                  )}
+                </div>
+                <div className="w-10 h-10 rounded-lg bg-brand-blue/10 text-brand-blue flex items-center justify-center font-bold shrink-0">
+                  {ex.assignedScore}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function AddExampleForm({ criteria, onClose, onAdded }) {
+  const [criterionId, setCriterionId] = useState('');
+  const [excerpt, setExcerpt] = useState('');
+  const [assignedScore, setAssignedScore] = useState(3);
+  const [justification, setJustification] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!criterionId || !excerpt) return toast.error('Fill in criterion and excerpt');
+    setSaving(true);
+    try {
+      await createExample({
+        criterionId: parseInt(criterionId),
+        excerpt,
+        assignedScore,
+        justification: justification || null,
+      });
+      toast.success('Example added');
+      onAdded();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Failed to add');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      exit={{ opacity: 0, height: 0 }}
+      className="mb-6 p-5 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)]"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold text-[var(--text-primary)]">Add Graded Example</h3>
+        <button onClick={onClose} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] mb-1">Criterion</label>
+            <select
+              value={criterionId}
+              onChange={(e) => setCriterionId(e.target.value)}
+              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg text-sm text-[var(--text-primary)]"
+              required
+            >
+              <option value="">Select criterion...</option>
+              {criteria.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <Input label="Score (1-5)" type="number" value={assignedScore} onChange={(v) => setAssignedScore(parseInt(v) || 1)} />
+        </div>
+        <Textarea label="Thesis Excerpt" value={excerpt} onChange={setExcerpt} />
+        <Textarea label="Justification (why this score)" value={justification} onChange={setJustification} />
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-[var(--text-secondary)]">Cancel</button>
+          <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2 bg-brand-blue text-white rounded-lg text-sm font-medium disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            Add Example
+          </button>
+        </div>
+      </form>
+    </motion.div>
+  );
+}
+
+export default ThesisCritiquePage;

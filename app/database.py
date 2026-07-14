@@ -1,9 +1,8 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 from app.config import settings
 
-# Create asynchronous engine
-# PostgreSQL connection URL starts with postgresql+asyncpg://
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
@@ -11,7 +10,6 @@ engine = create_async_engine(
     pool_pre_ping=True
 )
 
-# Async session factory
 SessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -20,11 +18,14 @@ SessionLocal = async_sessionmaker(
     autoflush=False
 )
 
-# Declarative base class for models
 class Base(DeclarativeBase):
     pass
 
-# Dependency to get db session in path operations
+async def init_pgvector():
+    """Create the pgvector extension if it doesn't exist."""
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
 async def get_db():
     async with SessionLocal() as session:
         try:
