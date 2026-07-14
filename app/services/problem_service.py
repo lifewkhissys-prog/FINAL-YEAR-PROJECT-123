@@ -268,3 +268,41 @@ async def get_test_cases(db: AsyncSession, problem_id: int, lecturer_id: int) ->
         select(TestCase).where(TestCase.problem_id == problem_id).order_by(TestCase.position.asc())
     )
     return result.scalars().all()
+
+
+async def list_problems_for_lecturer(db: AsyncSession, lecturer_id: int) -> list[dict]:
+    """List all problems created by assessments belonging to courses owned by the lecturer."""
+    result = await db.execute(
+        select(Problem)
+        .join(Assessment)
+        .join(Course)
+        .where(Course.lecturer_id == lecturer_id)
+        .options(
+            selectinload(Problem.test_cases),
+            selectinload(Problem.assessment).selectinload(Assessment.course)
+        )
+    )
+    problems = result.scalars().all()
+    out = []
+    for p in problems:
+        content_dict = parse_problem_content(p)
+        test_cases_list = [{
+            "id": tc.id,
+            "stdin": tc.stdin,
+            "expected_stdout": tc.expected_stdout,
+            "is_hidden": tc.is_hidden,
+            "position": tc.position
+        } for tc in p.test_cases]
+        
+        out.append({
+            "id": p.id,
+            "assessment_id": p.assessment_id,
+            "title": p.title,
+            "type": p.type.value,
+            "language": p.language.value,
+            "content": content_dict,
+            "time_limit_ms": p.time_limit_ms,
+            "memory_limit_mb": p.memory_limit_mb,
+            "test_cases": test_cases_list
+        })
+    return out

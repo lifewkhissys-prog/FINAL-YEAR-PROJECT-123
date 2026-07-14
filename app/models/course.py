@@ -20,6 +20,7 @@ class Course(Base):
     language:    Mapped[CourseLanguage] = mapped_column(SAEnum(CourseLanguage), nullable=False)
     description: Mapped[str | None]     = mapped_column(Text, nullable=True)
     lecturer_id: Mapped[int]            = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    join_code:   Mapped[str | None]     = mapped_column(String(50), unique=True, nullable=True)
     created_at:  Mapped[datetime]       = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

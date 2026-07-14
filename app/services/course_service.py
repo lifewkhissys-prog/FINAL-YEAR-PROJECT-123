@@ -71,6 +71,7 @@ async def get_courses_for_user(db: AsyncSession, user: User) -> list[dict]:
             "lecturer_name": c.lecturer.name if c.lecturer else "Unknown",
             "student_count": student_count,
             "assessment_count": assessment_count,
+            "join_code": c.join_code,
             "created_at": c.created_at
         })
     return out
@@ -100,19 +101,29 @@ async def get_course_detail(db: AsyncSession, course_id: int, user: User) -> dic
         "lecturer_name": course.lecturer.name if course.lecturer else "Unknown",
         "student_count": student_count,
         "assessment_count": assessment_count,
+        "join_code": course.join_code,
         "created_at": course.created_at
     }
 
 async def create_course(db: AsyncSession, lecturer_id: int, data: CourseCreate) -> dict:
+    import random
+    import string
+
     # Validate language is valid
     if data.language not in CourseLanguage.__members__.values():
         raise BadRequestError("Invalid course language")
         
+    # Generate unique join code: e.g. PY-XXXXXX or generic KN-XXXXXX
+    lang_pref = data.language.value[:2].upper() if data.language else "KN"
+    rand_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    join_code = f"{lang_pref}-{rand_suffix}"
+
     course = Course(
         title=data.title,
         language=data.language,
         description=data.description,
-        lecturer_id=lecturer_id
+        lecturer_id=lecturer_id,
+        join_code=join_code
     )
     db.add(course)
     await db.commit()
@@ -132,6 +143,7 @@ async def create_course(db: AsyncSession, lecturer_id: int, data: CourseCreate) 
         "lecturer_name": c.lecturer.name if c.lecturer else "Unknown",
         "student_count": 0,
         "assessment_count": 0,
+        "join_code": c.join_code,
         "created_at": c.created_at
     }
 
@@ -169,6 +181,7 @@ async def update_course(db: AsyncSession, course_id: int, lecturer_id: int, data
         "lecturer_name": course.lecturer.name if course.lecturer else "Unknown",
         "student_count": student_count,
         "assessment_count": assessment_count,
+        "join_code": course.join_code,
         "created_at": course.created_at
     }
 
@@ -250,3 +263,45 @@ async def remove_student_from_course(db: AsyncSession, course_id: int, lecturer_
         
     await db.delete(enrollment)
     await db.commit()
+
+
+async def enroll_student_self(db: AsyncSession, student_id: int, join_code: str) -> dict:
+    """Self-enrollment endpoint for students using a course join code."""
+    trimmed = join_code.strip()
+    result = await db.execute(
+        select(Course).where(func.lower(Course.join_code) == func.lower(trimmed)).options(selectinload(Course.lecturer))
+    )
+    course = result.scalar_one_or_none()
+    if not course:
+        raise NotFoundError("No course found with that enrollment code.")
+
+    # Check existing enrollment
+    existing_res = await db.execute(
+        select(Enrollment).where(
+            Enrollment.course_id == course.id,
+            Enrollment.user_id == student_id
+        )
+    )
+    if existing_res.scalar_one_or_none():
+        raise ConflictError("You are already enrolled in this course")
+
+    enrollment = Enrollment(
+        user_id=student_id,
+        course_id=course.id
+    )
+    db.add(enrollment)
+    await db.commit()
+    await db.refresh(enrollment)
+
+    # Fetch student detail
+    student_res = await db.execute(select(User).where(User.id == student_id))
+    student = student_res.scalar_one()
+
+    return {
+        "user_id": student.id,
+        "name": student.name,
+        "email": student.email,
+        "enrolled_at": enrollment.enrolled_at,
+        "course_id": course.id,
+        "course_title": course.title
+    }

@@ -8,3 +8,4 @@ export const deleteCourse    = (id)       => api.delete(`/courses/${id}`);
 export const enrollInCourse  = (id)       => api.post(`/courses/${id}/enroll`);
 export const getCourseStudents  = (id)    => api.get(`/courses/${id}/students`);
 export const removeStudent   = (courseId, userId) => api.delete(`/courses/${courseId}/students/${userId}`);
+export const enrollInCourseByCode = (joinCode) => api.post('/courses/enroll', { joinCode });

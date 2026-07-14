@@ -1,16 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { Outlet, useLocation, matchPath } from 'react-router-dom';
 import { CommandPalette } from '../ui/CommandPalette';
 import { NeuralCore } from '../ui/NeuralCore';
 import toast, { Toaster } from 'react-hot-toast';
+import useAuthStore from '../../store/authStore';
+import { useDemoStore } from '../../store/demoStore';
 
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const isProblemSession = matchPath('/student/problems/:problemId', location.pathname);
   const hideSidebar = Boolean(isProblemSession);
+
+  const user = useAuthStore((state) => state.user);
+  const initializeData = useDemoStore((state) => state.initializeData);
+
+  useEffect(() => {
+    if (user?.role) {
+      initializeData(user.role);
+    }
+  }, [user, initializeData]);
 
   return (
     <div className="flex min-h-screen bg-[var(--bg-primary)] blueprint-grid-dots overflow-x-hidden relative">

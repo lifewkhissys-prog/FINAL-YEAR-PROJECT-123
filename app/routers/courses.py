@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
-from app.dependencies import get_current_user, require_lecturer
+from app.dependencies import get_current_user, require_lecturer, require_student
 from app.models.user import User
-from app.schemas.course import CourseCreate, CourseUpdate, CourseResponse, EnrollRequest, EnrollmentResponse
+from app.schemas.course import CourseCreate, CourseUpdate, CourseResponse, EnrollRequest, EnrollmentResponse, EnrollByCodeRequest
 from app.services import course_service
 
 router = APIRouter()
@@ -22,6 +22,14 @@ async def create_course(
     db: AsyncSession = Depends(get_db)
 ):
     return await course_service.create_course(db, current_user.id, body)
+
+@router.post("/enroll", response_model=EnrollmentResponse, status_code=201)
+async def enroll_by_code(
+    body: EnrollByCodeRequest,
+    current_user: User = Depends(require_student),
+    db: AsyncSession = Depends(get_db)
+):
+    return await course_service.enroll_student_self(db, current_user.id, body.join_code)
 
 @router.get("/{course_id}", response_model=CourseResponse)
 async def get_course(

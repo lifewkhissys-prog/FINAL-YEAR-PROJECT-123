@@ -17,6 +17,13 @@ async def list_practice_problems(
 ):
     return await problem_service.get_practice_problems(db, courseId, current_user.id)
 
+@router.get("", response_model=list[ProblemResponse])
+async def list_problems(
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db)
+):
+    return await problem_service.list_problems_for_lecturer(db, current_user.id)
+
 @router.post("", response_model=ProblemResponse, status_code=201)
 async def create_problem(
     body: ProblemCreate,

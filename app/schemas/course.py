@@ -21,6 +21,7 @@ class CourseResponse(BaseModel):
     lecturer_name:    str
     student_count:    int
     assessment_count: int
+    join_code:        str | None = None
     created_at:       datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -28,10 +29,15 @@ class CourseResponse(BaseModel):
 class EnrollRequest(BaseModel):
     email: EmailStr
 
+class EnrollByCodeRequest(BaseModel):
+    join_code: str
+
 class EnrollmentResponse(BaseModel):
-    user_id:     int
-    name:        str
-    email:       str
-    enrolled_at: datetime
+    user_id:      int
+    name:         str
+    email:        str
+    enrolled_at:  datetime
+    course_id:    int | None = None
+    course_title: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
