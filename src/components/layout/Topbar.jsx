@@ -1,8 +1,7 @@
-import { LogOut, Menu, Bell, Terminal, Volume2, BookOpen, Code2, LayoutDashboard, FolderClock, Clock, Library, FileText, GraduationCap, Users } from 'lucide-react';
+import { LogOut, Menu, Bell, BookOpen, Code2, LayoutDashboard, FolderClock, Clock, Library, FileText, GraduationCap, Users } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { ThemeSwitcher } from '../ui/ThemeSwitcher';
-import { useState } from 'react';
 import DevLabLogo from '../ui/DevLabLogo';
 
 export function Topbar({ onMenuClick }) {
@@ -10,8 +9,11 @@ export function Topbar({ onMenuClick }) {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
   const location = useLocation();
-  const [isHackerMode, setIsHackerMode] = useState(false);
-  const [isAudioActive, setIsAudioActive] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const isLecturer = user?.role === 'lecturer';
 
@@ -31,17 +33,6 @@ export function Topbar({ onMenuClick }) {
   ];
 
   const links = isLecturer ? lecturerLinks : studentLinks;
-
-  const toggleHackerMode = () => {
-    setIsHackerMode(!isHackerMode);
-    document.body.classList.toggle('hacker-mode');
-    document.body.classList.toggle('crt-overlay');
-  };
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
 
   return (
     <header className="h-16 border-b border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 w-full shrink-0">
@@ -85,22 +76,6 @@ export function Topbar({ onMenuClick }) {
 
       {/* Right utilities & Profile */}
       <div className="flex items-center gap-2 sm:gap-4">
-        <button 
-          onClick={() => setIsAudioActive(!isAudioActive)}
-          className={`btn-icon transition-all ${isAudioActive ? 'text-brand-blue scale-110' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-          title="Toggle Adaptive Soundscape (Flow State)"
-        >
-          <Volume2 size={18} />
-        </button>
-
-        <button 
-          onClick={toggleHackerMode}
-          className={`btn-icon transition-all ${isHackerMode ? 'text-brand-blue scale-110' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
-          title="Toggle Hacker Mode (CRT)"
-        >
-          <Terminal size={18} />
-        </button>
-
         <ThemeSwitcher />
         
         <button className="btn-icon relative">

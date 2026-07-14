@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Command, 
   Search, 
-  Terminal, 
   Sun, 
   Moon, 
   LayoutDashboard, 
@@ -45,16 +44,6 @@ export function CommandPalette() {
       icon: LayoutDashboard, 
       shortcut: '↵',
       action: () => navigate(role === 'lecturer' ? '/lecturer/dashboard' : '/student/dashboard') 
-    },
-    { 
-      id: 'hacker-mode', 
-      name: 'Toggle Hacker Mode', 
-      icon: Cpu, 
-      category: 'System', 
-      action: () => {
-        document.documentElement.classList.toggle('hacker-mode');
-        document.body.classList.toggle('crt-overlay');
-      } 
     },
     { 
       id: 'light', 
