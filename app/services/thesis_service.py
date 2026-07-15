@@ -142,7 +142,7 @@ async def score_criterion(
     )
 
     prompt = (
-        f"You are assessing ONE dimension of a Master's thesis. Do not evaluate "
+        f"You are assessing ONE dimension of a Master's/Bachelor's thesis. Do not evaluate "
         f"anything outside this dimension.\n\n"
         f"CRITERION: {criterion.name}\n"
         f"DESCRIPTION: {criterion.description}\n\n"
@@ -152,35 +152,49 @@ async def score_criterion(
         f"5 (excellent): {criterion.level_5_desc}\n\n"
         f"REFERENCE EXAMPLES (previously graded by a human):\n{examples_text}\n\n"
         f"RELEVANT THESIS EXCERPTS TO EVALUATE:\n{chunks_text}\n\n"
-        f"Respond ONLY in the required JSON format."
+        f"You MUST respond ONLY with a JSON object containing exactly these keys:\n"
+        f"1. \"score\": an integer between 1 and 5.\n"
+        f"2. \"justification\": a single string explaining the score based on the rubric. Do NOT return a nested object or list here.\n"
+        f"3. \"cited_text\": a string containing verbatim quotes from the thesis excerpts supporting this score.\n\n"
+        f"Respond ONLY in this JSON format."
     )
 
     try:
         response = await client.chat.completions.create(
             model=settings.GROQ_SCORER_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "criterion_score",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "score": {"type": "integer"},
-                            "justification": {"type": "string"},
-                            "cited_text": {"type": "string"},
-                        },
-                        "required": ["score", "justification", "cited_text"],
-                    },
-                    "strict": True,
-                },
-            },
+            response_format={"type": "json_object"},
             temperature=0.3,
             max_tokens=1024,
         )
         result = json.loads(response.choices[0].message.content)
+        
         # Clamp score to 1-5
-        result["score"] = max(1, min(5, int(result.get("score", 3))))
+        score_val = result.get("score")
+        if isinstance(score_val, dict):
+            # Fallback if model puts a dict inside score
+            score_val = score_val.get("score") or score_val.get("value") or 3
+        try:
+            result["score"] = max(1, min(5, int(score_val)))
+        except (ValueError, TypeError):
+            result["score"] = 3
+
+        # Sanitize justification (ensure it is a string)
+        just_val = result.get("justification")
+        if isinstance(just_val, dict):
+            just_val = " | ".join(f"{k}: {v}" for k, v in just_val.items())
+        elif isinstance(just_val, list):
+            just_val = "; ".join(str(x) for x in just_val)
+        result["justification"] = str(just_val or "No justification provided.")
+
+        # Sanitize cited_text (ensure it is a string)
+        cite_val = result.get("cited_text")
+        if isinstance(cite_val, dict):
+            cite_val = " | ".join(f"{k}: {v}" for k, v in cite_val.items())
+        elif isinstance(cite_val, list):
+            cite_val = "; ".join(str(x) for x in cite_val)
+        result["cited_text"] = str(cite_val or "")
+
         return result
     except Exception as e:
         logger.error(f"Scorer failed for '{criterion.name}': {e}")
@@ -206,32 +220,23 @@ async def verify_score(
         f"1: {criterion.level_1_desc}\n"
         f"3: {criterion.level_3_desc}\n"
         f"5: {criterion.level_5_desc}\n\n"
-        f"Respond ONLY in the required JSON format."
+        f"Respond ONLY in a JSON object with keys 'verified' (boolean) and 'notes' (string)."
     )
 
     try:
         response = await client.chat.completions.create(
             model=settings.GROQ_VERIFIER_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "verification_result",
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "verified": {"type": "boolean"},
-                            "notes": {"type": "string"},
-                        },
-                        "required": ["verified", "notes"],
-                    },
-                    "strict": True,
-                },
-            },
+            response_format={"type": "json_object"},
             temperature=0.2,
             max_tokens=512,
         )
-        return json.loads(response.choices[0].message.content)
+        result = json.loads(response.choices[0].message.content)
+        if "verified" not in result:
+            result["verified"] = True
+        if "notes" not in result:
+            result["notes"] = ""
+        return result
     except Exception as e:
         logger.error(f"Verifier failed for '{criterion.name}': {e}")
         return {"verified": True, "notes": f"Verification skipped due to error: {e}"}
@@ -257,7 +262,7 @@ async def synthesize_report(
         )
 
     chapters_section = "\n\n".join(
-        f"## {ch['title']}\n{ch['content'][:4000]}" for ch in chapters
+        f"## {ch['title']}\n{ch['content'][:1200]}" for ch in chapters
     )
 
     prompt = (

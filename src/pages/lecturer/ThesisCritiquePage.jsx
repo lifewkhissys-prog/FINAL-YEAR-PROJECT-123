@@ -322,13 +322,14 @@ function SubmissionDetail({ id, onBack }) {
       setLoading(false);
       // Poll while assessing
       if (s?.status === 'assessing' || s?.status === 'pending') {
-        pollRef.current = setInterval(async () => {
+        const interval = setInterval(async () => {
           const fresh = await load();
           if (fresh?.status === 'completed' || fresh?.status === 'reviewed') {
-            clearInterval(pollRef.current);
+            clearInterval(interval);
             toast.success('Assessment complete!');
           }
         }, 5000);
+        pollRef.current = interval;
       }
     })();
     return () => clearInterval(pollRef.current);
@@ -340,14 +341,15 @@ function SubmissionDetail({ id, onBack }) {
       await triggerAssessment(id);
       toast.success('Assessment started — processing...');
       const s = await load();
-      pollRef.current = setInterval(async () => {
+      const interval = setInterval(async () => {
         const fresh = await load();
         if (fresh?.status === 'completed' || fresh?.status === 'reviewed') {
-          clearInterval(pollRef.current);
+          clearInterval(interval);
           toast.success('Assessment complete!');
           setAssessing(false);
         }
       }, 5000);
+      pollRef.current = interval;
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to start assessment');
       setAssessing(false);

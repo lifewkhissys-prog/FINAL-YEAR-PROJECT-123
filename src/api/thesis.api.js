@@ -72,10 +72,7 @@ export const exportSubmissionDocx = async (id, title) => {
   const res = await api.get(`/thesis-submissions/${id}/export`, {
     responseType: 'blob',
   });
-  const blob = new Blob([res.data], {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  });
-  const url = window.URL.createObjectURL(blob);
+  const url = window.URL.createObjectURL(res.data);
   const link = document.createElement('a');
   link.href = url;
   const clean = (title || 'report').replace(/[^a-z0-9]/gi, '_').toLowerCase();
