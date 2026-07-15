@@ -1040,7 +1040,7 @@ function DocumentViewer({ fullText, loading, highlight }) {
     if (highlight && highlightRef.current) {
       highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [highlight]);
+  }, [highlight, fullText]);
 
   if (loading) {
     return (
@@ -1060,35 +1060,139 @@ function DocumentViewer({ fullText, loading, highlight }) {
     );
   }
 
-  // Split the full text around the highlighted passage
-  if (highlight) {
-    // Normalize whitespace for matching
-    const norm = (s) => s.replace(/\s+/g, ' ').trim();
-    const normFull = norm(fullText);
-    const normHl   = norm(highlight);
-    const idx = normFull.indexOf(normHl);
+  // Find range function mapping normalized string indices back to original string indices
+  const findMatchRange = () => {
+    if (!highlight) return null;
 
-    if (idx !== -1) {
-      const before = fullText.substring(0, idx);
-      const match  = fullText.substring(idx, idx + normHl.length);
-      const after  = fullText.substring(idx + normHl.length);
+    const cleanChar = (c) => {
+      if (c === '“' || c === '”' || c === '"') return '"';
+      if (c === '‘' || c === '’' || c === "'") return "'";
+      if (c === '–' || c === '—') return '-';
+      return c.toLowerCase();
+    };
 
-      return (
-        <div className="relative max-h-[70vh] overflow-y-auto p-5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed font-mono text-xs">
-          {before}
-          <mark
-            ref={highlightRef}
-            className="bg-yellow-400/30 text-[var(--text-primary)] border border-yellow-400/50 rounded px-0.5 scroll-mt-8"
-          >
-            {match}
-          </mark>
-          {after}
-        </div>
-      );
+    // 1. Build clean version of fullText with index map
+    let cleanFull = '';
+    const indexMap = [];
+    let lastWasSpace = false;
+
+    for (let i = 0; i < fullText.length; i++) {
+      const c = fullText[i];
+      if (/\s/.test(c)) {
+        if (!lastWasSpace) {
+          cleanFull += ' ';
+          indexMap.push(i);
+          lastWasSpace = true;
+        }
+      } else {
+        cleanFull += cleanChar(c);
+        indexMap.push(i);
+        lastWasSpace = false;
+      }
     }
+
+    // 2. Build clean version of highlight
+    let cleanHl = '';
+    lastWasSpace = false;
+    for (let i = 0; i < highlight.length; i++) {
+      const c = highlight[i];
+      if (/\s/.test(c)) {
+        if (!lastWasSpace) {
+          cleanHl += ' ';
+          lastWasSpace = true;
+        }
+      } else {
+        cleanHl += cleanChar(c);
+        lastWasSpace = false;
+      }
+    }
+    cleanHl = cleanHl.trim();
+
+    // Try exact clean match
+    let idx = cleanFull.indexOf(cleanHl);
+    if (idx !== -1) {
+      const startOrig = indexMap[idx];
+      const endOrig = indexMap[idx + cleanHl.length - 1] + 1;
+      return { start: startOrig, end: endOrig };
+    }
+
+    // Fallback 1: Try matching alphanumeric-only characters (ignores punctuation differences)
+    let cleanFullAlpha = '';
+    const alphaNumMap = [];
+    for (let i = 0; i < cleanFull.length; i++) {
+      const c = cleanFull[i];
+      if (/[a-z0-9]/.test(c)) {
+        cleanFullAlpha += c;
+        alphaNumMap.push(indexMap[i]);
+      }
+    }
+
+    let cleanHlAlpha = '';
+    for (let i = 0; i < cleanHl.length; i++) {
+      const c = cleanHl[i];
+      if (/[a-z0-9]/.test(c)) {
+        cleanHlAlpha += c;
+      }
+    }
+
+    if (cleanHlAlpha.length > 10) {
+      const idxAlpha = cleanFullAlpha.indexOf(cleanHlAlpha);
+      if (idxAlpha !== -1) {
+        const startOrig = alphaNumMap[idxAlpha];
+        const endOrig = alphaNumMap[idxAlpha + cleanHlAlpha.length - 1] + 1;
+        return { start: startOrig, end: endOrig };
+      }
+    }
+
+    // Fallback 2: Match by first 50 chars prefix, and/or suffix
+    const prefixLen = Math.min(cleanHl.length, 50);
+    if (prefixLen >= 15) {
+      const prefix = cleanHl.substring(0, prefixLen);
+      const idxPrefix = cleanFull.indexOf(prefix);
+      if (idxPrefix !== -1) {
+        const startOrig = indexMap[idxPrefix];
+        // Look for suffix within a window after the prefix match
+        const suffixLen = Math.min(cleanHl.length - prefixLen, 40);
+        if (suffixLen >= 10) {
+          const suffix = cleanHl.substring(cleanHl.length - suffixLen);
+          const idxSuffix = cleanFull.indexOf(suffix, idxPrefix);
+          if (idxSuffix !== -1) {
+            const endOrig = indexMap[idxSuffix + suffixLen - 1] + 1;
+            return { start: startOrig, end: endOrig };
+          }
+        }
+        // Fallback to approximate length match from prefix
+        const approxEnd = Math.min(idxPrefix + cleanHl.length, cleanFull.length - 1);
+        const endOrig = indexMap[approxEnd] + 1;
+        return { start: startOrig, end: endOrig };
+      }
+    }
+
+    return null;
+  };
+
+  const range = findMatchRange();
+
+  if (range) {
+    const before = fullText.substring(0, range.start);
+    const match = fullText.substring(range.start, range.end);
+    const after = fullText.substring(range.end);
+
+    return (
+      <div className="relative max-h-[70vh] overflow-y-auto p-5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed font-mono text-xs">
+        {before}
+        <mark
+          ref={highlightRef}
+          className="bg-yellow-400/30 text-[var(--text-primary)] border border-yellow-400/50 rounded px-0.5 scroll-mt-8"
+        >
+          {match}
+        </mark>
+        {after}
+      </div>
+    );
   }
 
-  // No highlight — plain render
+  // No match or no highlight — plain render
   return (
     <div className="max-h-[70vh] overflow-y-auto p-5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl text-xs text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed font-mono">
       {fullText}
