@@ -102,6 +102,16 @@ async def get_submission(
     return await thesis_service.get_submission(db, submission_id, current_user.id)
 
 
+@submissions_router.get("/{submission_id}/full-text")
+async def get_submission_full_text(
+    submission_id: int,
+    current_user: User = Depends(require_lecturer),
+    db: AsyncSession = Depends(get_db),
+):
+    sub = await thesis_service.get_submission(db, submission_id, current_user.id)
+    return {"fullText": sub.full_text}
+
+
 @submissions_router.delete("/{submission_id}", status_code=204)
 async def delete_submission(
     submission_id: int,

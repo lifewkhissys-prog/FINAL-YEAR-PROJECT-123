@@ -36,6 +36,11 @@ export const getSubmission = async (id) => {
   return res.data;
 };
 
+export const getSubmissionFullText = async (id) => {
+  const res = await api.get(`/thesis-submissions/${id}/full-text`);
+  return res.data;
+};
+
 export const deleteSubmission = async (id) => {
   await api.delete(`/thesis-submissions/${id}`);
 };

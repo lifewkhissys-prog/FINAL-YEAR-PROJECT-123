@@ -10,7 +10,7 @@ import {
   uploadThesis, listSubmissions, getSubmission, deleteSubmission,
   triggerAssessment, getResults, overrideResult, getReport, updateReport,
   exportSubmissionDocx, listCriteria, updateCriterion, createExample,
-  listExamples,
+  listExamples, getSubmissionFullText,
 } from '../../api/thesis.api';
 import toast from 'react-hot-toast';
 import ReactMarkdown from 'react-markdown';
@@ -315,6 +315,26 @@ function SubmissionDetail({ id, onBack }) {
     }
   }, [id]);
 
+  const [activeSubTab, setActiveSubTab] = useState('scores');
+  const [fullText, setFullText] = useState('');
+  const [loadingFullText, setLoadingFullText] = useState(false);
+  const [activeHighlight, setActiveHighlight] = useState('');
+
+  useEffect(() => {
+    if (activeSubTab === 'document' && !fullText) {
+      (async () => {
+        setLoadingFullText(true);
+        try {
+          const data = await getSubmissionFullText(id);
+          setFullText(data.fullText || 'No text content available.');
+        } catch {
+          toast.error('Failed to load document text');
+        }
+        setLoadingFullText(false);
+      })();
+    }
+  }, [activeSubTab, id, fullText]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -469,57 +489,110 @@ function SubmissionDetail({ id, onBack }) {
         </div>
       )}
 
-      {/* Per-criterion results */}
-      {results.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-brand-blue" /> Criterion Scores
-          </h3>
-          <div className="grid gap-3">
-            {results.map((r) => (
-              <CriterionCard key={r.id} result={r} submissionId={id} onOverride={load} />
-            ))}
-          </div>
+      {/* Sub-tab bar for Scores / Report / Document */}
+      {(results.length > 0 || reportText) && (
+        <div className="flex gap-1 mb-5 bg-[var(--bg-secondary)] rounded-xl p-1 max-w-fit">
+          {[
+            { key: 'scores',   label: 'Criterion Scores', icon: BarChart3 },
+            { key: 'report',   label: 'Narrative Report', icon: BookOpen },
+            { key: 'document', label: 'Document View',    icon: FileText },
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveSubTab(key)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                activeSubTab === key
+                  ? 'bg-brand-blue text-white shadow-md'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />{label}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Narrative report */}
-      {reportText && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-brand-blue" /> Narrative Report
-            </h3>
-            <div className="flex gap-2">
-              {!editingReport && (
-                <button onClick={() => setEditingReport(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg hover:border-brand-blue/50 text-[var(--text-secondary)]">
-                  <Edit3 className="w-3 h-3" /> Edit
+      <AnimatePresence mode="wait">
+        {/* Scores Tab */}
+        {activeSubTab === 'scores' && results.length > 0 && (
+          <motion.div key="scores" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="grid gap-3 mb-6">
+            {results.map((r) => (
+              <CriterionCard
+                key={r.id}
+                result={r}
+                submissionId={id}
+                onOverride={load}
+                onCitationClick={(cited) => {
+                  setActiveHighlight(cited);
+                  setActiveSubTab('document');
+                }}
+              />
+            ))}
+          </motion.div>
+        )}
+
+        {/* Report Tab */}
+        {activeSubTab === 'report' && reportText && (
+          <motion.div key="report" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-brand-blue" /> Narrative Report
+              </h3>
+              <div className="flex gap-2">
+                {!editingReport && (
+                  <button onClick={() => setEditingReport(true)} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-lg hover:border-brand-blue/50 text-[var(--text-secondary)]">
+                    <Edit3 className="w-3 h-3" /> Edit
+                  </button>
+                )}
+                {editingReport && (
+                  <>
+                    <button onClick={() => setEditingReport(false)} className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">Cancel</button>
+                    <button onClick={handleSaveReport} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-blue text-white rounded-lg">
+                      <Save className="w-3 h-3" /> Save
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {editingReport ? (
+              <textarea
+                value={editedText}
+                onChange={(e) => setEditedText(e.target.value)}
+                rows={25}
+                className="w-full p-4 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-primary)] font-mono focus:border-brand-blue focus:outline-none resize-y"
+              />
+            ) : (
+              <div className="p-5 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)] prose prose-invert prose-sm max-w-none">
+                <ReactMarkdown>{reportText}</ReactMarkdown>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Document View Tab */}
+        {activeSubTab === 'document' && (
+          <motion.div key="document" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+                <FileText className="w-5 h-5 text-brand-blue" /> Document Viewer
+              </h3>
+              {activeHighlight && (
+                <button
+                  onClick={() => setActiveHighlight('')}
+                  className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-primary)]"
+                >
+                  ✕ Clear highlight
                 </button>
               )}
-              {editingReport && (
-                <>
-                  <button onClick={() => setEditingReport(false)} className="px-3 py-1.5 text-xs text-[var(--text-secondary)]">Cancel</button>
-                  <button onClick={handleSaveReport} className="flex items-center gap-1 px-3 py-1.5 text-xs bg-brand-blue text-white rounded-lg">
-                    <Save className="w-3 h-3" /> Save
-                  </button>
-                </>
-              )}
             </div>
-          </div>
-          {editingReport ? (
-            <textarea
-              value={editedText}
-              onChange={(e) => setEditedText(e.target.value)}
-              rows={25}
-              className="w-full p-4 bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-primary)] font-mono focus:border-brand-blue focus:outline-none resize-y"
+            <DocumentViewer
+              fullText={fullText}
+              loading={loadingFullText}
+              highlight={activeHighlight}
             />
-          ) : (
-            <div className="p-5 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-primary)] prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown>{reportText}</ReactMarkdown>
-            </div>
-          )}
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -528,7 +601,7 @@ function SubmissionDetail({ id, onBack }) {
 // CRITERION CARD — score, justification, verifier, override
 // ═══════════════════════════════════════════════════════════════════════════
 
-function CriterionCard({ result, submissionId, onOverride }) {
+function CriterionCard({ result, submissionId, onOverride, onCitationClick }) {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [score, setScore] = useState(result.supervisorOverrideScore || result.aiScore);
   const [notes, setNotes] = useState(result.supervisorNotes || '');
@@ -570,9 +643,16 @@ function CriterionCard({ result, submissionId, onOverride }) {
           </div>
           <p className="text-sm text-[var(--text-secondary)] mb-2">{result.aiJustification}</p>
           {result.citedText && (
-            <blockquote className="border-l-2 border-brand-blue/30 pl-3 text-xs text-[var(--text-secondary)] italic mb-2">
-              "{result.citedText.substring(0, 300)}{result.citedText.length > 300 ? '…' : ''}"
-            </blockquote>
+            <button
+              onClick={() => onCitationClick?.(result.citedText)}
+              title="Click to view in document"
+              className="w-full text-left mb-2 group"
+            >
+              <blockquote className="border-l-2 border-brand-blue/30 pl-3 text-xs text-[var(--text-secondary)] italic group-hover:border-brand-blue group-hover:text-[var(--text-primary)] transition-colors cursor-pointer flex items-start gap-1">
+                <Eye className="w-3 h-3 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-brand-blue" />
+                <span>"{result.citedText.substring(0, 300)}{result.citedText.length > 300 ? '…' : ''}"</span>
+              </blockquote>
+            </button>
           )}
           {result.verifierNotes && (
             <p className="text-xs text-[var(--text-secondary)]">
@@ -948,4 +1028,73 @@ function AddExampleForm({ criteria, onClose, onAdded }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DOCUMENT VIEWER — renders the full thesis text and highlights a passage
+// ═══════════════════════════════════════════════════════════════════════════
+
+function DocumentViewer({ fullText, loading, highlight }) {
+  const highlightRef = useRef(null);
+
+  // Auto-scroll to the highlighted passage
+  useEffect(() => {
+    if (highlight && highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlight]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-48 gap-2 text-[var(--text-secondary)]">
+        <Loader2 className="w-5 h-5 animate-spin text-brand-blue" />
+        <span className="text-sm">Loading document…</span>
+      </div>
+    );
+  }
+
+  if (!fullText) {
+    return (
+      <div className="flex items-center justify-center h-48 text-[var(--text-secondary)] text-sm">
+        <FileText className="w-5 h-5 mr-2 opacity-50" />
+        No document text available yet.
+      </div>
+    );
+  }
+
+  // Split the full text around the highlighted passage
+  if (highlight) {
+    // Normalize whitespace for matching
+    const norm = (s) => s.replace(/\s+/g, ' ').trim();
+    const normFull = norm(fullText);
+    const normHl   = norm(highlight);
+    const idx = normFull.indexOf(normHl);
+
+    if (idx !== -1) {
+      const before = fullText.substring(0, idx);
+      const match  = fullText.substring(idx, idx + normHl.length);
+      const after  = fullText.substring(idx + normHl.length);
+
+      return (
+        <div className="relative max-h-[70vh] overflow-y-auto p-5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl text-sm text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed font-mono text-xs">
+          {before}
+          <mark
+            ref={highlightRef}
+            className="bg-yellow-400/30 text-[var(--text-primary)] border border-yellow-400/50 rounded px-0.5 scroll-mt-8"
+          >
+            {match}
+          </mark>
+          {after}
+        </div>
+      );
+    }
+  }
+
+  // No highlight — plain render
+  return (
+    <div className="max-h-[70vh] overflow-y-auto p-5 bg-[var(--bg-secondary)] border border-[var(--border-primary)] rounded-xl text-xs text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed font-mono">
+      {fullText}
+    </div>
+  );
+}
+
 export default ThesisCritiquePage;
+
