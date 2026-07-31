@@ -1,8 +1,9 @@
+import os
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/devlab")
+    DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./devlab.db")
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
 
     # JWT Config
@@ -12,19 +13,14 @@ class Settings(BaseSettings):
 
     # Groq API — model-per-task configuration
     GROQ_API_KEY: str = Field(default="")
-    GROQ_SCORER_MODEL: str = Field(default="llama-3.3-70b-versatile")
-    GROQ_VERIFIER_MODEL: str = Field(default="llama-3.3-70b-versatile")
-    GROQ_SYNTHESIS_MODEL: str = Field(default="llama-3.3-70b-versatile")
+    GROQ_SCORER_MODEL: str = Field(default="llama-3.1-8b-instant")
+    GROQ_VERIFIER_MODEL: str = Field(default="llama-3.1-8b-instant")
+    GROQ_SYNTHESIS_MODEL: str = Field(default="llama-3.1-8b-instant")
     GROQ_FAST_MODEL: str = Field(default="llama-3.1-8b-instant")
     THESIS_UPLOAD_MAX_MB: int = Field(default=20)
 
     # Embedding model (sentence-transformers compatible name)
     EMBEDDING_MODEL: str = Field(default="BAAI/bge-small-en-v1.5")
-
-    # Judge0 Config
-    JUDGE0_API_URL: str = Field(default="http://localhost:2358")
-    JUDGE0_API_KEY: str | None = Field(default=None)
-    JUDGE0_USE_AUTH_HEADER: bool = Field(default=False)
 
     # Sandbox limits
     SANDBOX_CPU_QUOTA: int = Field(default=50000)

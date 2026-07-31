@@ -18,6 +18,7 @@ yarn-error.log*
 pnpm-debug.log*
 
 # ── Python / Backend ──────────────────────────────────────────────────────────
+*.db
 __pycache__/
 *.py[cod]
 *.pyo

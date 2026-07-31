@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Structure Mapping &amp; Alignment - Thesis Assessor</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-bright": "#f7f9fb",
+                    "primary": "#002046",
+                    "surface-container-high": "#e6e8ea",
+                    "on-surface-variant": "#44474e",
+                    "error-container": "#ffdad6",
+                    "secondary": "#775a19",
+                    "on-secondary": "#ffffff",
+                    "tertiary": "#162132",
+                    "tertiary-fixed": "#d8e3fa",
+                    "surface-container-highest": "#e0e3e5",
+                    "surface-tint": "#465f88",
+                    "on-tertiary-container": "#949fb4",
+                    "primary-fixed-dim": "#aec7f7",
+                    "secondary-container": "#fed488",
+                    "inverse-primary": "#aec7f7",
+                    "primary-fixed": "#d6e3ff",
+                    "primary-container": "#1b365d",
+                    "on-secondary-container": "#785a1a",
+                    "surface-dim": "#d8dadc",
+                    "inverse-surface": "#2d3133",
+                    "on-secondary-fixed-variant": "#5d4201",
+                    "surface-container-low": "#f2f4f6",
+                    "outline": "#74777f",
+                    "surface-container": "#eceef0",
+                    "surface": "#f7f9fb",
+                    "on-primary-container": "#87a0cd",
+                    "on-primary": "#ffffff",
+                    "secondary-fixed": "#ffdea5",
+                    "inverse-on-surface": "#eff1f3",
+                    "on-primary-fixed": "#001b3d",
+                    "on-tertiary-fixed": "#111c2c",
+                    "surface-container-lowest": "#ffffff",
+                    "on-background": "#191c1e",
+                    "on-tertiary-fixed-variant": "#3c475a",
+                    "on-error-container": "#93000a",
+                    "on-secondary-fixed": "#261900",
+                    "secondary-fixed-dim": "#e9c176",
+                    "on-surface": "#191c1e",
+                    "outline-variant": "#c4c6cf",
+                    "on-primary-fixed-variant": "#2e476f",
+                    "tertiary-container": "#2b3648",
+                    "tertiary-fixed-dim": "#bcc7dd",
+                    "error": "#ba1a1a",
+                    "on-error": "#ffffff",
+                    "surface-variant": "#e0e3e5",
+                    "on-tertiary": "#ffffff",
+                    "background": "#f7f9fb"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "reading-margin": "64px",
+                    "container-max-width": "1280px",
+                    "grid-gutter": "16px",
+                    "compact-padding": "12px",
+                    "base": "8px"
+            },
+            "fontFamily": {
+                    "label-md": [
+                            "Inter"
+                    ],
+                    "body-sm": [
+                            "Inter"
+                    ],
+                    "headline-lg": [
+                            "Playfair Display"
+                    ],
+                    "headline-md": [
+                            "Playfair Display"
+                    ],
+                    "body-lg": [
+                            "Inter"
+                    ],
+                    "label-sm": [
+                            "Inter"
+                    ],
+                    "headline-lg-mobile": [
+                            "Playfair Display"
+                    ],
+                    "data-tabular": [
+                            "Inter"
+                    ],
+                    "display-lg": [
+                            "Playfair Display"
+                    ],
+                    "body-md": [
+                            "Inter"
+                    ]
+            },
+            "fontSize": {
+                    "label-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "16px",
+                                    "letterSpacing": "0.01em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-sm": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-lg": [
+                            "32px",
+                            {
+                                    "lineHeight": "40px",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-lg": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "label-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "14px",
+                                    "letterSpacing": "0.04em",
+                                    "fontWeight": "500"
+                            }
+                    ],
+                    "headline-lg-mobile": [
+                            "28px",
+                            {
+                                    "lineHeight": "36px",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "data-tabular": [
+                            "13px",
+                            {
+                                    "lineHeight": "18px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "display-lg": [
+                            "48px",
+                            {
+                                    "lineHeight": "56px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+    },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen flex font-body-md">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col h-screen fixed left-0 top-0 py-compact-padding bg-surface-container-low dark:bg-tertiary-container border-r border-surface-container-highest w-64 z-40 flat no shadows">
+<div class="px-compact-padding mb-8 flex flex-col items-center">
+<img alt="Supervisor Avatar" class="w-16 h-16 rounded-full mb-4 border-2 border-primary object-cover" data-alt="A small, professional avatar of an academic supervisor with a neutral expression, wearing a dark navy blazer, set against a plain light gray background. High quality, clear, well-lit portrait." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBZ_mC3AsEd3J0HWYflbBRzTg9gQvyyNAW8s9PrxjTpNcBqqKsSlXQrw8bPxFE06cALgAwT2jlNZkwNNVgMpncqEZzpOI0FAcDWXHGFgg4Y-K_-VYg9EVoNNaGbxQD4mCyJ3J4YHfdoEqUnV4vScZCqUjVjyUt8NG_GaeYq3l_TI9IHTWILgKFFIb_PqW5gL4Kbg1Vw4DqWvjqdBd6-3qxTvkGq6oMrCacZHuPAa5xQDjUSBOpXmLREqfQOx43xfx2nc3VJrf9yXyI"/>
+<h2 class="font-headline-md text-headline-md text-primary dark:text-primary-fixed-dim text-center">Thesis Evaluation</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant text-center mt-1">8-Step Assessment Flow</p>
+</div>
+<div class="flex-1 overflow-y-auto w-full">
+<ul class="space-y-1 w-full flex flex-col">
+<!-- Introduction (Inactive) -->
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">info</span>
+                        Introduction
+                    </a>
+</li>
+<!-- Methodology (Active - Context: Structure Mapping often follows Intro/Lit Review and bridges into Methodology) -->
+<li>
+<a class="flex items-center px-4 py-3 bg-primary-container text-on-primary-container font-bold rounded-r-full font-label-md text-label-md scale-[0.98] transition-all duration-200" href="#">
+<span class="material-symbols-outlined mr-3">psychology</span>
+                        Methodology
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">menu_book</span>
+                        Literature Review
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">analytics</span>
+                        Data Analysis
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">fact_check</span>
+                        Results
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">forum</span>
+                        Discussion
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">task_alt</span>
+                        Conclusion
+                    </a>
+</li>
+<li>
+<a class="flex items-center px-4 py-3 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors duration-150 ease-in-out font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined mr-3">list_alt</span>
+                        References
+                    </a>
+</li>
+</ul>
+</div>
+<div class="mt-auto pt-4 px-4 pb-4">
+<button class="w-full bg-primary text-on-primary py-2 px-4 rounded-DEFAULT font-label-md text-label-md hover:bg-primary-container transition-colors mb-4 shadow-sm">
+                Submit Final Report
+            </button>
+<ul class="space-y-1">
+<li>
+<a class="flex items-center py-2 text-on-surface-variant hover:text-primary font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined mr-2 text-sm">help_outline</span>
+                        Help Center
+                    </a>
+</li>
+<li>
+<a class="flex items-center py-2 text-on-surface-variant hover:text-primary font-label-sm text-label-sm" href="#">
+<span class="material-symbols-outlined mr-2 text-sm">picture_as_pdf</span>
+                        Export PDF
+                    </a>
+</li>
+</ul>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col md:ml-64 bg-surface min-h-screen">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-reading-margin h-16 z-50 bg-surface-container-lowest dark:bg-surface-container-lowest border-b border-surface-container-high dark:border-outline-variant flat no shadows sticky top-0">
+<div class="flex items-center">
+<!-- Mobile Menu Button (Hidden on Desktop) -->
+<button class="md:hidden mr-4 text-primary">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h1 class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">Thesis Assessor</h1>
+</div>
+<!-- Search Bar (on_right) -->
+<div class="hidden lg:flex items-center bg-surface-container rounded-full px-4 py-1.5 border border-outline-variant focus-within:border-primary transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-sm font-body-sm text-on-surface placeholder-on-surface-variant outline-none w-48" placeholder="Search document..." type="text"/>
+</div>
+<div class="flex items-center space-x-4">
+<button class="text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container-high p-2 rounded-full transition-colors duration-150 ease-in-out">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:bg-surface-container dark:hover:bg-surface-container-high p-2 rounded-full transition-colors duration-150 ease-in-out">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="hidden sm:flex space-x-2">
+<button class="px-4 py-1.5 border border-primary text-primary rounded-DEFAULT font-label-md text-label-md hover:bg-primary-fixed transition-colors">
+                        Save Draft
+                    </button>
+<button class="px-4 py-1.5 bg-primary text-on-primary rounded-DEFAULT font-label-md text-label-md hover:bg-primary-container transition-colors">
+                        Next Step
+                    </button>
+</div>
+</div>
+</header>
+<!-- Canvas / Content -->
+<div class="p-6 md:px-reading-margin md:py-8 w-full max-w-container-max-width mx-auto flex flex-col gap-6">
+<!-- Page Header -->
+<div class="flex flex-col gap-2 mb-4">
+<h2 class="font-headline-lg text-headline-lg text-primary">Structure Mapping &amp; Alignment</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-3xl">Review the extracted foundational elements of the thesis. Ensure logical consistency from objectives through to results. Broken alignments may indicate critical structural flaws.</p>
+</div>
+<!-- Preliminary Check Gate Warning -->
+<div class="bg-error-container border border-error rounded-lg p-4 flex items-start gap-4 mb-2 shadow-sm">
+<span class="material-symbols-outlined text-error mt-0.5">warning</span>
+<div>
+<h3 class="font-label-md text-label-md text-on-error-container mb-1">Preliminary Gate Check: Incomplete Structure Detected</h3>
+<p class="font-body-sm text-body-sm text-on-error-container">Critical sections appear to be misaligned or missing. Specifically, Objective 3 lacks a corresponding Result, and the declared scope differs significantly from the analyzed content. A thorough review is recommended before proceeding.</p>
+</div>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Main Alignment Table (Spans 8 columns) -->
+<div class="lg:col-span-8 bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.05)] overflow-hidden flex flex-col">
+<div class="px-5 py-4 border-b border-surface-container-highest bg-surface-bright flex justify-between items-center">
+<h3 class="font-headline-md text-headline-md text-primary text-lg">Logical Alignment Matrix</h3>
+<button class="text-primary hover:bg-primary-fixed p-1.5 rounded-full transition-colors">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-surface-container-highest font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
+<th class="py-3 px-4 w-1/4">Objective / RQ</th>
+<th class="py-3 px-4 w-1/4">Methodology</th>
+<th class="py-3 px-4 w-1/4">Result Found</th>
+<th class="py-3 px-4 w-1/4 text-center">Alignment Status</th>
+</tr>
+</thead>
+<tbody class="font-data-tabular text-data-tabular text-on-surface divide-y divide-surface-container-highest">
+<!-- Row 1: Valid -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-3 px-4 align-top">
+<div class="font-medium mb-1">OBJ-1</div>
+<div class="text-on-surface-variant line-clamp-3">Determine the impact of variable X on system performance under load.</div>
+</td>
+<td class="py-3 px-4 align-top border-l border-surface-container-highest">
+<div class="text-on-surface-variant line-clamp-3">Quantitative load testing via Apache JMeter, n=500 iterations.</div>
+</td>
+<td class="py-3 px-4 align-top border-l border-surface-container-highest">
+<div class="text-on-surface-variant line-clamp-3">Performance degraded by 15% at peak load (Fig 4).</div>
+</td>
+<td class="py-3 px-4 align-middle text-center border-l border-surface-container-highest">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary-fixed text-on-primary-fixed-variant font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-xs">check_circle</span>
+                                            Aligned
+                                        </span>
+</td>
+</tr>
+<!-- Row 2: Warning -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="py-3 px-4 align-top">
+<div class="font-medium mb-1">RQ-2</div>
+<div class="text-on-surface-variant line-clamp-3">How do users perceive the new interface changes?</div>
+</td>
+<td class="py-3 px-4 align-top border-l border-surface-container-highest">
+<div class="text-on-surface-variant line-clamp-3">Qualitative surveys (Likert scale) post-deployment.</div>
+</td>
+<td class="py-3 px-4 align-top border-l border-surface-container-highest bg-secondary-fixed/20">
+<div class="text-secondary-fixed-dim line-clamp-3 italic">Results mentioned briefly in Discussion, but no formal data presented.</div>
+</td>
+<td class="py-3 px-4 align-middle text-center border-l border-surface-container-highest">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm border border-secondary">
+<span class="material-symbols-outlined text-xs">warning</span>
+                                            Weak
+                                        </span>
+</td>
+</tr>
+<!-- Row 3: Critical Broken Link -->
+<tr class="hover:bg-surface-container-low transition-colors bg-error-container/10">
+<td class="py-3 px-4 align-top">
+<div class="font-medium mb-1">OBJ-3</div>
+<div class="text-on-surface-variant line-clamp-3">Propose a new framework for data optimization.</div>
+</td>
+<td class="py-3 px-4 align-top border-l border-surface-container-highest">
+<div class="text-on-surface-variant line-clamp-3">Conceptual modeling based on literature review gaps.</div>
+</td>
+<td class="py-3 px-4 align-top border-l border-surface-container-highest bg-error-container/30 border-error/20">
+<div class="text-on-error-container font-medium">No results found matching this objective.</div>
+</td>
+<td class="py-3 px-4 align-middle text-center border-l border-surface-container-highest">
+<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-error text-on-error font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-xs">broken_image</span>
+                                            Broken
+                                        </span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-3 bg-surface-container-low border-t border-surface-container-highest text-right">
+<button class="text-primary font-label-sm text-label-sm hover:underline">View Full Matrix</button>
+</div>
+</div>
+<!-- Scope Comparison Side Panel (Spans 4 columns) -->
+<div class="lg:col-span-4 flex flex-col gap-6">
+<!-- Scope Panel -->
+<div class="bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-[0_2px_4px_rgba(0,0,0,0.05)] p-5">
+<h3 class="font-headline-md text-headline-md text-primary text-lg border-b border-surface-container-highest pb-3 mb-4">Scope Analysis</h3>
+<div class="space-y-5">
+<div>
+<h4 class="font-label-sm text-label-sm text-on-surface-variant uppercase mb-2">Declared Scope (Intro)</h4>
+<div class="p-3 bg-surface-container-low rounded-lg border border-surface-variant text-body-sm font-body-sm">
+                                    "This research focuses exclusively on enterprise-level SaaS applications deployed within the EU between 2020-2023."
+                                </div>
+</div>
+<div class="flex justify-center -my-2 relative z-10">
+<span class="material-symbols-outlined text-outline bg-surface-container-lowest rounded-full border border-surface-container-highest p-1">swap_vert</span>
+</div>
+<div>
+<h4 class="font-label-sm text-label-sm text-on-surface-variant uppercase mb-2">Actual Content (Detected)</h4>
+<div class="p-3 bg-surface-container-lowest rounded-lg border border-secondary border-dashed text-body-sm font-body-sm">
+                                    Significant discussion on consumer mobile apps (Section 4.2). Data set includes non-EU companies (Appendix B).
+                                </div>
+</div>
+</div>
+<!-- Evidence Callout -->
+<div class="mt-5 bg-secondary/10 border-l-2 border-primary p-3 rounded-r-lg">
+<div class="flex items-start gap-2">
+<span class="material-symbols-outlined text-primary text-sm mt-0.5">format_quote</span>
+<div>
+<p class="font-body-sm text-body-sm text-on-surface-variant italic mb-1">"While initially focused on EU enterprises, the inclusion of US-based mobile startups provided a richer dataset..." (p. 45)</p>
+<span class="font-label-sm text-label-sm text-primary">AI Confidence Score: 92%</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Panel -->
+<div class="bg-surface-container-lowest border border-surface-container-highest rounded-xl p-5">
+<h3 class="font-label-md text-label-md text-primary mb-3">Assessor Actions</h3>
+<div class="space-y-3">
+<button class="w-full flex items-center justify-between px-4 py-2 border border-outline-variant rounded-lg hover:border-primary hover:bg-surface-container transition-colors group">
+<span class="font-body-sm text-body-sm text-on-surface group-hover:text-primary">Flag Structural Flaw</span>
+<span class="material-symbols-outlined text-outline group-hover:text-primary">flag</span>
+</button>
+<button class="w-full flex items-center justify-between px-4 py-2 border border-outline-variant rounded-lg hover:border-primary hover:bg-surface-container transition-colors group">
+<span class="font-body-sm text-body-sm text-on-surface group-hover:text-primary">Request Scope Clarification</span>
+<span class="material-symbols-outlined text-outline group-hover:text-primary">chat_bubble</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

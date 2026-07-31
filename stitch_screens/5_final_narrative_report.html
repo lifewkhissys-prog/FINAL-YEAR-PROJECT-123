@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Thesis Assessor - Final Narrative Report</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#f7f9fb",
+                        "primary": "#002046",
+                        "surface-container-high": "#e6e8ea",
+                        "on-surface-variant": "#44474e",
+                        "error-container": "#ffdad6",
+                        "secondary": "#775a19",
+                        "on-secondary": "#ffffff",
+                        "tertiary": "#162132",
+                        "tertiary-fixed": "#d8e3fa",
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-tint": "#465f88",
+                        "on-tertiary-container": "#949fb4",
+                        "primary-fixed-dim": "#aec7f7",
+                        "secondary-container": "#fed488",
+                        "inverse-primary": "#aec7f7",
+                        "primary-fixed": "#d6e3ff",
+                        "primary-container": "#1b365d",
+                        "on-secondary-container": "#785a1a",
+                        "surface-dim": "#d8dadc",
+                        "inverse-surface": "#2d3133",
+                        "on-secondary-fixed-variant": "#5d4201",
+                        "surface-container-low": "#f2f4f6",
+                        "outline": "#74777f",
+                        "surface-container": "#eceef0",
+                        "surface": "#f7f9fb",
+                        "on-primary-container": "#87a0cd",
+                        "on-primary": "#ffffff",
+                        "secondary-fixed": "#ffdea5",
+                        "inverse-on-surface": "#eff1f3",
+                        "on-primary-fixed": "#001b3d",
+                        "on-tertiary-fixed": "#111c2c",
+                        "surface-container-lowest": "#ffffff",
+                        "on-background": "#191c1e",
+                        "on-tertiary-fixed-variant": "#3c475a",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed": "#261900",
+                        "secondary-fixed-dim": "#e9c176",
+                        "on-surface": "#191c1e",
+                        "outline-variant": "#c4c6cf",
+                        "on-primary-fixed-variant": "#2e476f",
+                        "tertiary-container": "#2b3648",
+                        "tertiary-fixed-dim": "#bcc7dd",
+                        "error": "#ba1a1a",
+                        "on-error": "#ffffff",
+                        "surface-variant": "#e0e3e5",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f7f9fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "reading-margin": "64px",
+                        "container-max-width": "1280px",
+                        "grid-gutter": "16px",
+                        "compact-padding": "12px",
+                        "base": "8px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Playfair Display"],
+                        "headline-md": ["Playfair Display"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["Inter"],
+                        "headline-lg-mobile": ["Playfair Display"],
+                        "data-tabular": ["Inter"],
+                        "display-lg": ["Playfair Display"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "label-sm": ["12px", { "lineHeight": "14px", "letterSpacing": "0.04em", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "700" }],
+                        "data-tabular": ["13px", { "lineHeight": "18px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.filled {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        
+        /* Custom scrollbar for textareas */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: theme('colors.surface-container-low');
+            border-radius: theme('borderRadius.DEFAULT');
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background-color: theme('colors.outline-variant');
+            border-radius: theme('borderRadius.DEFAULT');
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface antialiased min-h-screen flex flex-col overflow-hidden">
+<!-- TopAppBar -->
+<header class="bg-surface-container-lowest dark:bg-surface-container-lowest border-b border-surface-container-high dark:border-outline-variant flat no shadows flex justify-between items-center w-full px-reading-margin h-16 z-50 shrink-0">
+<div class="flex items-center gap-4">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary-fixed-dim">Thesis Assessor</span>
+</div>
+<!-- Search bar (on_right logic applied to placement) -->
+<div class="hidden md:flex flex-1 max-w-md mx-8">
+<div class="relative w-full">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-full py-1.5 pl-10 pr-4 text-body-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary" placeholder="Search report..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:bg-surface-container p-2 rounded-full transition-colors duration-150 ease-in-out flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-on-surface-variant hover:bg-surface-container p-2 rounded-full transition-colors duration-150 ease-in-out flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="hidden lg:flex items-center gap-2 border border-primary text-primary px-4 py-1.5 rounded-lg hover:bg-surface-container transition-colors font-label-md text-label-md">
+<span class="material-symbols-outlined text-sm">save</span>
+                Save Draft
+            </button>
+<button class="hidden lg:flex items-center gap-2 bg-primary text-on-primary px-4 py-1.5 rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors font-label-md text-label-md">
+                Next Step
+                <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant ml-2">
+<img alt="Supervisor Avatar" class="w-full h-full object-cover" data-alt="A professional headshot of an academic supervisor. The supervisor is looking directly at the camera with a subtle smile. Professional lighting, neutral background, corporate or modern academic style. The image feels credible and authoritative." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCdO-BPTdyc4ppIFCyNa6fJKeSEnUVsnxMiMDfFZdkqad1UDlV2KHI3M9ZPub-ZgDAZPmVyp2GhQjPPBEvlhvZ3nPz_dwVGgQxkw6si7xpZXVA3S5qbSK1V5mlZx92iZqTM_Nfi8_KoUjTUCWxTOqWQLBSxb1BLVNlZkrR4oW8mJ66q2mp_Gw0g8my-ZUaMxiFZEQGUKfvexi0jIbqjM2z8T-ut4P8gMq8z27cK5BSrjBate7Rl_JYfxpQWWNKyYBYn9xV-a8QUjo"/>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-tertiary-container border-r border-surface-container-highest flat no shadows flex flex-col h-full w-64 py-compact-padding shrink-0 hidden md:flex z-40">
+<div class="px-4 mb-6">
+<h2 class="font-headline-md text-headline-md text-primary dark:text-primary-fixed-dim">Thesis Evaluation</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">8-Step Assessment Flow</p>
+</div>
+<ul class="flex-1 overflow-y-auto space-y-1 pr-2">
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="info">info</span>
+                        Introduction
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="psychology">psychology</span>
+                        Methodology
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="menu_book">menu_book</span>
+                        Literature Review
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="analytics">analytics</span>
+                        Data Analysis
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="fact_check">fact_check</span>
+                        Results
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="forum">forum</span>
+                        Discussion
+                    </a>
+</li>
+<li>
+<!-- Active State for Conclusion/Final Report context -->
+<a class="flex items-center gap-3 px-4 py-2.5 bg-primary-container text-on-primary-container font-bold rounded-r-full scale-95 origin-left transition-all duration-200 shadow-sm font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined text-xl filled" data-icon="task_alt">task_alt</span>
+                        Conclusion
+                    </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-2.5 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest transition-colors font-label-md text-label-md rounded-r-full group" href="#">
+<span class="material-symbols-outlined text-xl group-hover:text-primary" data-icon="list_alt">list_alt</span>
+                        References
+                    </a>
+</li>
+</ul>
+<div class="mt-auto pt-4 border-t border-surface-container-highest px-4 space-y-3">
+<button class="w-full bg-primary text-on-primary py-2 rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors font-label-md text-label-md flex justify-center items-center gap-2 shadow-sm">
+<span class="material-symbols-outlined text-sm">send</span>
+                    Submit Final Report
+                </button>
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-primary transition-colors font-label-md text-label-md rounded" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="help_outline">help_outline</span>
+                        Help Center
+                    </a>
+<a class="flex items-center gap-3 px-2 py-2 text-on-surface-variant hover:text-primary transition-colors font-label-md text-label-md rounded" href="#">
+<span class="material-symbols-outlined text-lg" data-icon="picture_as_pdf">picture_as_pdf</span>
+                        Export PDF
+                    </a>
+</div>
+</div>
+</nav>
+<!-- Main Content Area - Final Narrative Report -->
+<main class="flex-1 overflow-y-auto bg-surface-bright relative" id="main-scroll">
+<div class="max-w-container-max-width mx-auto px-4 md:px-reading-margin py-8 md:py-12 space-y-8">
+<!-- Page Header -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-surface-container-high pb-6">
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="bg-primary-container text-on-primary-container font-label-sm text-label-sm px-2 py-0.5 rounded uppercase tracking-wider">Final Synthesis</span>
+<span class="text-on-surface-variant font-body-sm text-body-sm">Student ID: 8934-AL</span>
+</div>
+<h1 class="font-display-lg text-display-lg text-primary">Final Narrative Report</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mt-2 max-w-2xl">A comprehensive synthesis of all evaluated criteria, strengths, and necessary corrections for final assessment.</p>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 border border-primary text-primary px-4 py-2 rounded-lg hover:bg-surface-container transition-colors font-label-md text-label-md bg-surface-container-lowest">
+<span class="material-symbols-outlined">download</span>
+                            Export PDF
+                        </button>
+<button class="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg hover:bg-primary-container transition-colors font-label-md text-label-md shadow-sm">
+<span class="material-symbols-outlined">done_all</span>
+                            Finalize Report
+                        </button>
+</div>
+</div>
+<!-- Final Recommendation Card (Bento Style) -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<!-- Recommendation Selector -->
+<div class="lg:col-span-1 bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col">
+<h2 class="font-headline-md text-headline-md text-primary mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">gavel</span>
+                            Recommendation
+                        </h2>
+<div class="space-y-3 flex-1">
+<label class="relative flex cursor-pointer rounded-lg border bg-surface-container-lowest p-4 shadow-sm focus:outline-none border-outline-variant hover:bg-surface-container transition-colors has-[:checked]:border-secondary has-[:checked]:bg-secondary/10">
+<input class="sr-only" name="recommendation" type="radio" value="pass"/>
+<span class="flex flex-1">
+<span class="flex flex-col">
+<span class="block font-label-md text-label-md text-on-surface">Pass as Submitted</span>
+<span class="mt-1 flex items-center font-body-sm text-body-sm text-on-surface-variant">No further revisions required.</span>
+</span>
+</span>
+<span class="material-symbols-outlined text-secondary hidden peer-checked:block ml-2">check_circle</span>
+</label>
+<label class="relative flex cursor-pointer rounded-lg border bg-surface-container-lowest p-4 shadow-sm focus:outline-none border-secondary bg-secondary/5 ring-1 ring-secondary">
+<input checked="" class="sr-only" name="recommendation" type="radio" value="revise"/>
+<span class="flex flex-1">
+<span class="flex flex-col">
+<span class="block font-label-md text-label-md text-on-surface">Revise and Resubmit</span>
+<span class="mt-1 flex items-center font-body-sm text-body-sm text-on-surface-variant">Minor to moderate corrections needed.</span>
+</span>
+</span>
+<span class="material-symbols-outlined text-secondary block ml-2">edit_note</span>
+</label>
+<label class="relative flex cursor-pointer rounded-lg border bg-surface-container-lowest p-4 shadow-sm focus:outline-none border-outline-variant hover:bg-surface-container transition-colors has-[:checked]:border-error has-[:checked]:bg-error-container">
+<input class="sr-only" name="recommendation" type="radio" value="fail"/>
+<span class="flex flex-1">
+<span class="flex flex-col">
+<span class="block font-label-md text-label-md text-on-surface">Major Overhaul / Fail</span>
+<span class="mt-1 flex items-center font-body-sm text-body-sm text-on-surface-variant">Fundamental flaws in methodology or core argument.</span>
+</span>
+</span>
+</label>
+</div>
+</div>
+<!-- Overall Assessment Text Area -->
+<div class="lg:col-span-2 bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm flex flex-col group relative">
+<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary to-primary-fixed-dim rounded-t-xl opacity-50"></div>
+<div class="flex justify-between items-center mb-4">
+<h2 class="font-headline-md text-headline-md text-primary">Overall Assessment</h2>
+<span class="bg-surface-container-low text-on-surface-variant px-2 py-1 rounded font-data-tabular text-data-tabular flex items-center gap-1">
+<span class="material-symbols-outlined text-sm">auto_awesome</span> AI Drafted
+                            </span>
+</div>
+<div class="flex-1 flex flex-col">
+<label class="sr-only" for="overall-assessment">Overall Assessment Text</label>
+<textarea class="flex-1 w-full bg-surface-bright border border-outline-variant rounded-lg p-4 font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary resize-y min-h-[200px]" id="overall-assessment" placeholder="Provide a comprehensive summary of the thesis..."></textarea>
+<!-- Formatting Toolbar (Visual only) -->
+<div class="flex gap-2 mt-2 pt-2 border-t border-surface-container-high text-on-surface-variant">
+<button class="p-1 hover:bg-surface-container rounded"><span class="material-symbols-outlined text-sm">format_bold</span></button>
+<button class="p-1 hover:bg-surface-container rounded"><span class="material-symbols-outlined text-sm">format_italic</span></button>
+<button class="p-1 hover:bg-surface-container rounded"><span class="material-symbols-outlined text-sm">format_list_bulleted</span></button>
+<div class="w-px h-4 bg-outline-variant my-auto mx-1"></div>
+<button class="p-1 hover:bg-surface-container rounded ml-auto text-primary"><span class="material-symbols-outlined text-sm">spellcheck</span></button>
+</div>
+</div>
+</div>
+</div>
+<!-- Strengths & Corrections Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Strengths -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
+<h3 class="font-headline-md text-headline-md text-primary mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-emerald-600">thumb_up</span>
+                            Key Strengths
+                        </h3>
+<textarea class="w-full bg-surface-bright border border-outline-variant rounded-lg p-4 font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[150px]" placeholder="List the primary strengths of the research..."></textarea>
+</div>
+<!-- Required Corrections -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm relative overflow-hidden">
+<div class="absolute top-0 left-0 w-1 h-full bg-secondary"></div>
+<h3 class="font-headline-md text-headline-md text-primary mb-4 flex items-center gap-2 pl-2">
+<span class="material-symbols-outlined text-secondary">warning</span>
+                            Required Corrections
+                        </h3>
+<textarea class="w-full bg-surface-bright border border-outline-variant rounded-lg p-4 font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[150px] ml-2 w-[calc(100%-0.5rem)]" placeholder="Detail the necessary revisions..."></textarea>
+</div>
+</div>
+<!-- Chapter-by-Chapter Notes (Accordion Style UI) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden">
+<div class="px-6 py-4 border-b border-surface-container-high bg-surface-container-low flex justify-between items-center">
+<h3 class="font-headline-md text-headline-md text-primary">Chapter-by-Chapter Notes</h3>
+<button class="text-primary font-label-sm text-label-sm hover:underline">Expand All</button>
+</div>
+<div class="divide-y divide-surface-container-high">
+<!-- Chapter 1 -->
+<div class="p-6">
+<div class="flex justify-between items-center mb-3">
+<h4 class="font-label-md text-label-md text-on-surface">1. Introduction &amp; Literature Review</h4>
+<span class="bg-secondary/10 text-secondary px-2 py-0.5 rounded text-xs font-medium">Needs Work</span>
+</div>
+<textarea class="w-full bg-surface-bright border border-outline-variant rounded-lg p-3 font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[100px]"></textarea>
+</div>
+<!-- Chapter 2 -->
+<div class="p-6 bg-surface-bright/50">
+<div class="flex justify-between items-center mb-3">
+<h4 class="font-label-md text-label-md text-on-surface">2. Methodology</h4>
+<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-medium border border-emerald-200">Solid</span>
+</div>
+<textarea class="w-full bg-surface-bright border border-outline-variant rounded-lg p-3 font-body-sm text-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary min-h-[100px]"></textarea>
+</div>
+</div>
+</div>
+<!-- Priority Action Plan (Student Facing) -->
+<div class="bg-primary-container text-on-primary-container rounded-xl p-6 shadow-md border border-primary/20">
+<div class="flex items-center gap-3 mb-4">
+<div class="p-2 bg-surface-container-lowest rounded-full">
+<span class="material-symbols-outlined text-primary">format_list_numbered</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-surface-container-lowest">Priority Action Plan</h3>
+<p class="font-body-sm text-body-sm opacity-90">Direct instructions for the student's revision process.</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-lg p-1">
+<textarea class="w-full bg-transparent border-0 rounded-lg p-4 font-body-md text-body-md text-on-surface focus:ring-0 min-h-[150px]" placeholder="1. Rewrite the thesis statement to be more specific...
+2. Expand the sample size in the methodology..."></textarea>
+</div>
+</div>
+</div>
+<!-- Floating Save Indicator (Subtle) -->
+<div class="fixed bottom-6 right-6 bg-surface-container-lowest border border-outline-variant shadow-lg rounded-full px-4 py-2 flex items-center gap-2 opacity-0 transition-opacity duration-300" id="save-indicator">
+<span class="material-symbols-outlined text-primary animate-spin text-sm">sync</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Saving draft...</span>
+</div>
+</main>
+</div>
+<script>
+        // Simple script to simulate auto-saving interaction
+        const textareas = document.querySelectorAll('textarea');
+        const saveIndicator = document.getElementById('save-indicator');
+        let saveTimeout;
+
+        textareas.forEach(ta => {
+            ta.addEventListener('input', () => {
+                clearTimeout(saveTimeout);
+                saveIndicator.classList.remove('opacity-0');
+                
+                saveIndicator.innerHTML = `
+                    <span class="material-symbols-outlined text-primary animate-spin text-sm">sync</span>
+                    <span class="font-label-sm text-label-sm text-on-surface-variant">Saving draft...</span>
+                `;
+
+                saveTimeout = setTimeout(() => {
+                    saveIndicator.innerHTML = `
+                        <span class="material-symbols-outlined text-emerald-600 text-sm">check_circle</span>
+                        <span class="font-label-sm text-label-sm text-on-surface-variant">Draft saved</span>
+                    `;
+                    
+                    setTimeout(() => {
+                        saveIndicator.classList.add('opacity-0');
+                    }, 2000);
+                }, 1000);
+            });
+        });
+    </script>
+</body></html>

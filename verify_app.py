@@ -1,166 +1,86 @@
-import time
-import requests
+import asyncio
+import os
+from fastapi.testclient import TestClient
+from app.main import app
+from app.database import SessionLocal, engine, Base
+from app.seed import seed_database
+from app.models.thesis_critique import ThesisSubmission, AssessmentResult
 
-BASE_URL = "http://localhost:8000"  # Container internal port
+async def test_end_to_end_flow():
+    print("--- 1. Initializing DB and Seeding Rubric ---")
+    await seed_database()
 
-def test_app_integration():
-    print("--- STARTING APP DATABASE SYSTEM INTEGRATION TEST (SQL) ---")
-    session = requests.Session()
+    client = TestClient(app)
 
-    # 1. Register Lecturer
-    print("1. Registering lecturer...")
-    reg_lec = session.post(f"{BASE_URL}/auth/register", json={
-        "name": "Dr. Smith",
-        "email": "smith@devlab.edu",
-        "password": "password123",
-        "role": "lecturer"
-    })
-    print(f"   Status: {reg_lec.status_code}")
-    assert reg_lec.status_code in (201, 409)
+    print("--- 2. Testing GET /api/rubric/criteria ---")
+    res = client.get("/api/rubric/criteria?degree_level=mphil")
+    assert res.status_code == 200
+    criteria = res.json()
+    print(f"Retrieved {len(criteria)} top-level criteria for MPhil.")
+    assert len(criteria) > 0
 
-    # 2. Register Student
-    print("2. Registering student...")
-    reg_std = session.post(f"{BASE_URL}/auth/register", json={
-        "name": "Jane Doe",
-        "email": "jane@devlab.edu",
-        "password": "password123",
-        "role": "student"
-    })
-    print(f"   Status: {reg_std.status_code}")
-    assert reg_std.status_code in (201, 409)
+    print("--- 3. Testing POST /api/submissions (Uploading Sample Thesis) ---")
+    file_content = (
+        "CHAPTER 1: INTRODUCTION\n"
+        "This thesis investigates rubric-grounded multi-agent LLM evaluation of academic research documents.\n"
+        "Research Questions:\n"
+        "RQ1: Does sub-criterion decomposition reduce halo effect scoring variance?\n"
+        "RQ2: How effective is cross-chapter logical flow verification?\n\n"
+        "CHAPTER 2: LITERATURE REVIEW\n"
+        "Prior automated essay scoring systems rely on holistic prompt evaluation, leading to high variance...\n\n"
+        "CHAPTER 3: METHODOLOGY\n"
+        "We adopt a 7-criterion decomposition pipeline using Groq Llama-3.3-70b-versatile, sentence-transformers, and pgvector cosine similarity retrieval...\n"
+        "Sampling Frame: 150 student thesis documents across engineering departments at KNUST.\n\n"
+        "CHAPTER 4: RESULTS AND DISCUSSION\n"
+        "Empirical benchmarks demonstrate a Quadratic Weighted Kappa (QWK) of 0.84 compared to supervisor human ground truth ratings...\n\n"
+        "CHAPTER 5: CONCLUSION\n"
+        "The multi-agent thesis assessment architecture significantly improves score consistency and provides detailed narrative feedback.\n"
+    )
 
-    # 3. Login Lecturer
-    print("3. Logging in lecturer...")
-    log_lec = session.post(f"{BASE_URL}/auth/login", json={
-        "email": "smith@devlab.edu",
-        "password": "password123"
-    })
-    assert log_lec.status_code == 200
-    lec_token = log_lec.json()["access_token"]
-    lec_headers = {"Authorization": f"Bearer {lec_token}"}
+    upload_data = {
+        "student_name": "Elvis Atiah Test",
+        "title": "Rubric-Grounded Multi-Agent System for Thesis Assessment",
+        "degree_level": "mphil",
+        "programme": "Computer Engineering",
+        "institution": "KNUST"
+    }
 
-    # 4. Login Student
-    print("4. Logging in student...")
-    log_std = session.post(f"{BASE_URL}/auth/login", json={
-        "email": "jane@devlab.edu",
-        "password": "password123"
-    })
-    assert log_std.status_code == 200
-    std_token = log_std.json()["access_token"]
-    std_headers = {"Authorization": f"Bearer {std_token}"}
+    files = {
+        "file": ("test_thesis.txt", file_content.encode("utf-8"), "text/plain")
+    }
 
-    # 5. Create Course (Lecturer)
-    print("5. Creating course as lecturer...")
-    course_res = session.post(f"{BASE_URL}/courses", headers=lec_headers, json={
-        "title": "CS102: Data Structures",
-        "description": "Learn SQL queries.",
-        "language": "sql"
-    })
-    print(f"   Status: {course_res.status_code}, Response: {course_res.json()}")
-    assert course_res.status_code == 201
-    course_data = course_res.json()
-    course_id = course_data["id"]
-    join_code = course_data["join_code"]
-    print(f"   Created Course {course_id} with Join Code: {join_code}")
-    assert join_code is not None
+    upload_res = client.post("/api/submissions", data=upload_data, files=files)
+    assert upload_res.status_code == 200
+    sub_data = upload_res.json()
+    submission_id = sub_data["id"]
+    print(f"Uploaded thesis submission created with ID: {submission_id}")
 
-    # 6. Self-enroll Course (Student using Join Code)
-    print("6. Enrolling student via join code...")
-    enroll_res = session.post(f"{BASE_URL}/courses/enroll", headers=std_headers, json={
-        "join_code": join_code
-      })
-    print(f"   Status: {enroll_res.status_code}, Response: {enroll_res.json()}")
-    assert enroll_res.status_code == 201
-    assert enroll_res.json()["course_id"] == course_id
+    print("--- 4. Testing POST /api/submissions/{id}/assess (Trigger Pipeline) ---")
+    assess_res = client.post(f"/api/submissions/{submission_id}/assess")
+    assert assess_res.status_code == 200
+    print("Assessment pipeline triggered.")
 
-    # 7. Create Assessment (Lecturer)
-    print("7. Creating assessment...")
-    assessment_res = session.post(f"{BASE_URL}/assessments", headers=lec_headers, json={
-        "courseId": course_id,
-        "title": "SQL Assignment 1",
-        "startsAt": "2026-07-01T00:00:00Z",
-        "endsAt": "2026-07-30T00:00:00Z"
-    })
-    print(f"   Status: {assessment_res.status_code}")
-    assert assessment_res.status_code == 201
-    assessment_id = assessment_res.json()["id"]
+    print("--- 5. Verifying DB Submissions & Results ---")
+    async with SessionLocal() as session:
+        from sqlalchemy import select
+        sub_stmt = select(ThesisSubmission).where(ThesisSubmission.id == submission_id)
+        sub = (await session.execute(sub_stmt)).scalars().first()
+        print(f"Submission status: {sub.status}")
+        print(f"Preliminary gate check passed: {sub.preliminary_check_passed}")
+        print(f"Plagiarism score: {sub.plagiarism_score}%")
 
-    # 8. Create Problem under Assessment (Lecturer)
-    print("8. Creating coding problem...")
-    prob_res = session.post(f"{BASE_URL}/problems", headers=lec_headers, json={
-        "assessmentId": assessment_id,
-        "title": "Query All Users",
-        "type": "challenge",
-        "language": "sql",
-        "content": {
-            "description": "Select all user names from the users table.",
-            "starterCode": "SELECT name FROM users;"
-        }
-    })
-    print(f"   Status: {prob_res.status_code}")
-    assert prob_res.status_code == 201
-    problem_id = prob_res.json()["id"]
+        res_stmt = select(AssessmentResult).where(AssessmentResult.submission_id == submission_id)
+        results = (await session.execute(res_stmt)).scalars().all()
+        print(f"Evaluated {len(results)} sub-criteria results.")
 
-    # 9. Add Test Cases to Problem (Lecturer)
-    # Stdin is the seed sql script, expectedStdout is the expected CSV output of the query
-    print("9. Adding test cases...")
-    tc_res = session.put(f"{BASE_URL}/problems/{problem_id}/test-cases", headers=lec_headers, json=[
-        {
-            "stdin": "CREATE TABLE users(id INTEGER, name TEXT); INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');",
-            "expectedStdout": "Alice\nBob",
-            "isHidden": False,
-            "position": 0
-        }
-    ])
-    print(f"   Status: {tc_res.status_code}")
-    assert tc_res.status_code == 200
+    print("--- 6. Testing GET /api/submissions/{id}/report ---")
+    report_res = client.get(f"/api/submissions/{submission_id}/report")
+    assert report_res.status_code == 200
+    report_data = report_res.json()
+    print("Narrative report generated successfully:")
+    print(report_data["narrative_report"][:300] + "...")
 
-    # 10. Run/Test Code Submission (Student)
-    print("10. Testing code submission run...")
-    run_res = session.post(f"{BASE_URL}/submissions/run", headers=std_headers, json={
-        "problem_id": problem_id,
-        "code": "SELECT name FROM users;",
-        "language": "sql"
-    })
-    print(f"    Status: {run_res.status_code}, Response: {run_res.json()}")
-    assert run_res.status_code == 200
-    assert run_res.json()["status"] == "completed"
-    assert run_res.json()["score"] == 1
-
-    # 11. Submit Code Submission (Student)
-    print("11. Testing code submission submit...")
-    submit_res = session.post(f"{BASE_URL}/submissions/submit", headers=std_headers, json={
-        "problem_id": problem_id,
-        "code": "SELECT name FROM users;",
-        "language": "sql"
-    })
-    print(f"    Status: {submit_res.status_code}, Response: {submit_res.json()}")
-    assert submit_res.status_code == 200
-    assert submit_res.json()["status"] == "completed"
-
-    # 12. Fetch Lecturer Dashboard Stats
-    print("12. Fetching lecturer dashboard...")
-    lect_dash_res = session.get(f"{BASE_URL}/lecturer/dashboard", headers=lec_headers)
-    print(f"    Status: {lect_dash_res.status_code}, Response: {lect_dash_res.json()}")
-    assert lect_dash_res.status_code == 200
-    assert lect_dash_res.json()["totalCourses"] >= 1
-    assert lect_dash_res.json()["totalStudents"] >= 1
-
-    # 13. Fetch Student Dashboard Stats
-    print("13. Fetching student dashboard...")
-    stud_dash_res = session.get(f"{BASE_URL}/student/dashboard", headers=std_headers)
-    print(f"    Status: {stud_dash_res.status_code}, Response: {stud_dash_res.json()}")
-    assert stud_dash_res.status_code == 200
-    assert len(stud_dash_res.json()["enrolledCourses"]) >= 1
-
-    # 14. Fetch Student Submissions List
-    print("14. Fetching student submissions list...")
-    sub_list_res = session.get(f"{BASE_URL}/student/submissions", headers=std_headers)
-    print(f"    Status: {sub_list_res.status_code}, Response: {sub_list_res.json()}")
-    assert sub_list_res.status_code == 200
-    assert len(sub_list_res.json()) > 0
-
-    print("--- ALL APP INTEGRATION TESTS PASSED SUCCESSFULLY! ---")
+    print("SUCCESS! All thesis assessment backend endpoints & multi-agent pipeline tests passed.")
 
 if __name__ == "__main__":
-    test_app_integration()
+    asyncio.run(test_end_to_end_flow())

@@ -9,9 +9,12 @@ from app.models.submission import Submission, SubmissionStatus
 from app.models.test_result import TestResult
 from app.models.thesis_critique import (
     RubricCriterion,
+    RubricSubCriterion,
+    ChapterSubCriteriaMap,
     GradedExample,
     ThesisSubmission,
     AssessmentResult,
+    PlagiarismCheck,
     SubmissionStatus as ThesisSubmissionStatus,
 )
 
@@ -31,8 +34,11 @@ __all__ = [
     "SubmissionStatus",
     "TestResult",
     "RubricCriterion",
+    "RubricSubCriterion",
+    "ChapterSubCriteriaMap",
     "GradedExample",
     "ThesisSubmission",
     "AssessmentResult",
+    "PlagiarismCheck",
     "ThesisSubmissionStatus",
 ]
