@@ -5,6 +5,8 @@ from pydantic import Field
 class Settings(BaseSettings):
     DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./devlab.db")
     REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    UPSTASH_REDIS_REST_URL: str = Field(default="")
+    UPSTASH_REDIS_REST_TOKEN: str = Field(default="")
 
     # JWT Config
     SECRET_KEY: str = Field(default="devlabsecretkeychangeinproduction12345")
