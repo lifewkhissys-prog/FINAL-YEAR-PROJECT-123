@@ -1,7 +1,7 @@
 import requests
 import os
 
-BASE_URL = "http://127.0.0.1:8000/api"
+BASE_URL = "https://final-year-project-123.onrender.com/api"
 
 def main():
     print("Seeding sample thesis submissions...")
