@@ -10,24 +10,48 @@ def get_embedding_model():
             from sentence_transformers import SentenceTransformer
             from app.config import settings
             _model = SentenceTransformer(settings.EMBEDDING_MODEL)
-        except Exception as e:
-            print(f"sentence_transformers load failed: {e}. Using deterministic fallback embeddings.")
-            _model = "fallback"
+        except Exception:
+            try:
+                from fastembed import TextEmbedding
+                _model = TextEmbedding()
+            except Exception as e:
+                print(f"Embedding model load failed: {e}. Using deterministic fallback embeddings.")
+                _model = "fallback"
     return _model
 
+
+def embeddings_are_degraded() -> bool:
+    """
+    True when no real embedding model is loaded and `generate_embedding` is returning hash vectors.
+
+    Those vectors are deterministic but carry no semantic information, so any similarity computed
+    from them is noise. Callers that report a similarity figure to a user must check this and
+    suppress the figure rather than publish a meaningless number.
+    """
+    return get_embedding_model() == "fallback"
+
+
 def generate_embedding(text: str) -> List[float]:
-    """Generate 384-dimensional vector embedding for given text."""
+    """Generate dimensional vector embedding for given text."""
     if not text:
         return [0.0] * 384
     model = get_embedding_model()
     if model != "fallback":
         try:
-            vec = model.encode(text, normalize_embeddings=True)
-            return vec.tolist()
+            if hasattr(model, "encode"):
+                vec = model.encode(text, normalize_embeddings=True)
+                return vec.tolist()
+            elif hasattr(model, "embed"):
+                embeddings = list(model.embed([text]))
+                vec = np.array(embeddings[0])
+                norm = np.linalg.norm(vec)
+                if norm > 0:
+                    vec = vec / norm
+                return vec.tolist()
         except Exception as e:
             print(f"Error generating embedding: {e}")
 
-    # Fallback pseudo-embedding (deterministic hash vector)
+    # Fallback pseudo-embedding: a deterministic hash vector.
     np.random.seed(abs(hash(text)) % (2**32))
     vec = np.random.randn(384)
     norm = np.linalg.norm(vec)
@@ -43,3 +67,4 @@ def cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
     if norm1 == 0 or norm2 == 0:
         return 0.0
     return float(np.dot(v1, v2) / (norm1 * norm2))
+

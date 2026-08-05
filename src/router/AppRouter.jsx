@@ -2,6 +2,10 @@ import React, { Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 
+// Auth Pages
+const LoginPage = React.lazy(() => import('../pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
+const RegisterPage = React.lazy(() => import('../pages/auth/RegisterPage').then(module => ({ default: module.RegisterPage })));
+
 // Thesis Assessor Pages
 const UploadThesisPage = React.lazy(() => import('../pages/lecturer/UploadThesisPage'));
 const StructureMappingPage = React.lazy(() => import('../pages/lecturer/StructureMappingPage'));
@@ -28,8 +32,15 @@ export function AppRouter() {
     <AnimatePresence mode="wait">
       <Suspense fallback={<PageLoader />}>
         <Routes location={location} key={location.pathname}>
-          {/* Main Landing & Dashboard Redirect */}
+          {/* Auth Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+
+          {/* Main Landing & Dashboard Redirects */}
           <Route path="/" element={<Navigate to="/thesis/dashboard" replace />} />
+          <Route path="/dashboard" element={<Navigate to="/thesis/dashboard" replace />} />
+          <Route path="/lecturer/dashboard" element={<Navigate to="/thesis/dashboard" replace />} />
+          <Route path="/student/dashboard" element={<Navigate to="/thesis/dashboard" replace />} />
           <Route path="/thesis/dashboard" element={<SupervisorDashboardPage />} />
           <Route path="/thesis/upload" element={<UploadThesisPage />} />
           <Route path="/thesis/submission/:id/structure" element={<StructureMappingPage />} />

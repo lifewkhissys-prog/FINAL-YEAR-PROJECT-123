@@ -17,6 +17,7 @@ class SubmissionStatus(str, enum.Enum):
     pending = "pending"
     preliminary_check_failed = "preliminary_check_failed"
     assessing = "assessing"
+    failed = "failed"
     completed = "completed"
     reviewed = "reviewed"
 
@@ -24,16 +25,18 @@ class SubmissionStatus(str, enum.Enum):
 class RubricCriterion(Base):
     __tablename__ = "rubric_criteria"
 
-    id:           Mapped[int]          = mapped_column(Integer, primary_key=True)
-    degree_level: Mapped[str]          = mapped_column(String(50), default="mphil")  # undergraduate | msc | mphil | phd
-    name:         Mapped[str]          = mapped_column(String(255), nullable=False)
-    description:  Mapped[str]          = mapped_column(Text, nullable=False)
-    max_marks:    Mapped[float]        = mapped_column(Float, nullable=False)
-    source:       Mapped[str | None]   = mapped_column(String(255), nullable=True)
-    embedding                          = mapped_column(VectorType, nullable=True)
-    created_at:   Mapped[datetime]     = mapped_column(DateTime(timezone=True), server_default=func.now())
+    id:              Mapped[int]          = mapped_column(Integer, primary_key=True)
+    degree_level:    Mapped[str]          = mapped_column(String(50), default="mphil")  # undergraduate | msc | mphil | phd
+    assessment_type: Mapped[str]          = mapped_column(String(20), default="thesis") # thesis | oral
+    name:            Mapped[str]          = mapped_column(String(255), nullable=False)
+    description:     Mapped[str]          = mapped_column(Text, nullable=False)
+    max_marks:       Mapped[float]        = mapped_column(Float, nullable=False)
+    source:          Mapped[str | None]   = mapped_column(String(255), nullable=True)
+    embedding                             = mapped_column(VectorType, nullable=True)
+    created_at:      Mapped[datetime]     = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     sub_criteria: Mapped[List["RubricSubCriterion"]] = relationship("RubricSubCriterion", back_populates="criterion", cascade="all, delete-orphan")
+
 
 
 class RubricSubCriterion(Base):
@@ -95,6 +98,11 @@ class ThesisSubmission(Base):
     full_text:                  Mapped[str]        = mapped_column(Text, nullable=False)
     preliminary_check_passed:   Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     preliminary_check_notes:    Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Structured, reproducible findings from app.services.compliance_check (Guide Sections A/B/C/G).
+    compliance_findings:        Mapped[Any | None] = mapped_column(JSON, nullable=True)
+    # "monograph" (Guide Option 1) or "manuscript" (Option 2), detected from the chapter headings.
+    structure_option:           Mapped[str | None] = mapped_column(String(20), nullable=True)
+    error_detail:               Mapped[str | None] = mapped_column(Text, nullable=True)
     flow_analysis_table:        Mapped[str | None] = mapped_column(Text, nullable=True)
     plagiarism_score:           Mapped[float | None] = mapped_column(Float, nullable=True)
     plagiarism_report_url:      Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -117,11 +125,15 @@ class AssessmentResult(Base):
     id:                        Mapped[int]        = mapped_column(Integer, primary_key=True)
     submission_id:             Mapped[int]        = mapped_column(ForeignKey("thesis_submissions.id", ondelete="CASCADE"), nullable=False)
     sub_criterion_id:          Mapped[int]        = mapped_column(ForeignKey("rubric_sub_criteria.id", ondelete="CASCADE"), nullable=False)
-    ai_score:                  Mapped[float]      = mapped_column(Float, nullable=False)
+    # Null when the evaluation did not complete. A missing mark must stay missing: substituting a
+    # default here would put a mark on a supervisor's screen that no model ever produced.
+    ai_score:                  Mapped[float | None] = mapped_column(Float, nullable=True)
+    scoring_failed:            Mapped[bool | None]  = mapped_column(Boolean, default=False)
+    error_detail:              Mapped[str | None]   = mapped_column(Text, nullable=True)
     ai_score_run_1:            Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_score_run_2:            Mapped[float | None] = mapped_column(Float, nullable=True)
     score_consistency_flag:    Mapped[bool | None]  = mapped_column(Boolean, default=False)
-    ai_justification:          Mapped[str]        = mapped_column(Text, nullable=False)
+    ai_justification:          Mapped[str | None] = mapped_column(Text, nullable=True)
     cited_text:                Mapped[str | None] = mapped_column(Text, nullable=True)
     confidence_score:          Mapped[float | None] = mapped_column(Float, nullable=True)
     verifier_passed:           Mapped[bool | None] = mapped_column(Boolean, nullable=True)

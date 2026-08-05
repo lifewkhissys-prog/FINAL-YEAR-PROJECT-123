@@ -19,19 +19,13 @@ export function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.login);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-    
+  const performLogin = async (userEmail, userPassword) => {
     setLoading(true);
     setError('');
     
     try {
       try {
-        const res = await login({ email, password });
+        const res = await login({ email: userEmail, password: userPassword });
         const token = res.data.access_token;
         const resolvedUser = getUserFromToken(token);
         if (resolvedUser) {
@@ -50,17 +44,34 @@ export function LoginPage() {
 
       // MOCK DATA Fallback
       setTimeout(() => {
-        const role = email.includes('lecturer') ? 'lecturer' : 'student';
-        const name = role === 'lecturer' ? 'Lecturer Demo' : 'Student Demo';
-        const mockUser = { id: 1, name, email, role };
+        const role = userEmail.includes('lecturer') ? 'lecturer' : 'student';
+        const name = role === 'lecturer' ? 'Dr. Kwame Mensah' : 'Ama Serwaa';
+        const mockUser = { id: 1, name, email: userEmail, role };
         setAuth(mockUser, 'mock_token_12345');
         navigate(role === 'lecturer' ? '/lecturer/dashboard' : '/student/dashboard');
-      }, 1000);
+      }, 500);
 
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid email or password');
       setLoading(false);
     }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+    performLogin(email, password);
+  };
+
+  const handleQuickLogin = (demoRole) => {
+    const demoEmail = demoRole === 'lecturer' ? 'lecturer@knust.edu.gh' : 'student@knust.edu.gh';
+    const demoPass = 'password123';
+    setEmail(demoEmail);
+    setPassword(demoPass);
+    performLogin(demoEmail, demoPass);
   };
 
   return (
@@ -79,6 +90,29 @@ export function LoginPage() {
         <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-2">Welcome back</h1>
         <p className="text-[var(--text-secondary)] text-sm mb-6">Enter your details to sign in to your account</p>
 
+        {/* Quick Demo Credentials Buttons */}
+        <div className="mb-6 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+          <p className="text-xs font-semibold text-brand-blue mb-2 flex items-center gap-1">
+            ⚡ Quick Test / Demo Credentials:
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('lecturer')}
+              className="py-2 px-3 text-xs font-medium rounded-md bg-brand-purple/20 hover:bg-brand-purple/30 text-purple-300 border border-purple-500/30 transition-colors text-center"
+            >
+              Dr. Kwame (Lecturer)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('student')}
+              className="py-2 px-3 text-xs font-medium rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 transition-colors text-center"
+            >
+              Ama Serwaa (Student)
+            </button>
+          </div>
+        </div>
+
         {error && <div className="mb-6"><Alert type="error" message={error} /></div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -86,7 +120,7 @@ export function LoginPage() {
             id="email"
             label="Email Address"
             type="email"
-            placeholder="student@uni.edu"
+            placeholder="lecturer@knust.edu.gh"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -114,15 +148,6 @@ export function LoginPage() {
             Register here
           </Link>
         </p>
-      </div>
-      
-      {/* Dev notes */}
-      <div className="mt-8 text-xs text-[var(--text-muted)] bg-white/5 p-4 rounded-lg max-w-md border border-default">
-        <p className="font-semibold mb-1">Developer Note (Mock Login):</p>
-        <ul className="list-disc pl-4 space-y-1">
-          <li>Type any email containing "lecturer" to login as Lecturer.</li>
-          <li>Type anything else to login as Student.</li>
-        </ul>
       </div>
     </motion.div>
   );

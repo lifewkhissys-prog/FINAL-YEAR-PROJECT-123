@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 const CHAPTERS = [
   { key: 'introduction', label: 'Introduction', icon: 'info' },
@@ -58,16 +59,21 @@ export default function CriterionScoringPage() {
     async function loadChapterResults() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
+        const res = await authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
         if (res.ok) {
           const data = await res.json();
           setResults(data);
           // Initialize overrides
           const overrides = {};
           data.forEach(item => {
-            overrides[item.sub_criterion_id] = item.supervisor_override_score !== null && item.supervisor_override_score !== undefined
+            // Leave an unscored sub-criterion blank rather than seeding the input with 0, which a
+            // supervisor could save as a real mark of zero without noticing.
+            const v = item.supervisor_override_score !== null && item.supervisor_override_score !== undefined
               ? item.supervisor_override_score
               : item.ai_score;
+            if (v !== null && v !== undefined) {
+              overrides[item.sub_criterion_id] = v;
+            }
           });
           setOverrideScores(overrides);
         }
@@ -90,7 +96,7 @@ export default function CriterionScoringPage() {
   const handleSaveOverride = async (subCritId) => {
     try {
       const val = overrideScores[subCritId];
-      await fetch(`/api/submissions/${id}/results/${subCritId}`, {
+      await authFetch(`/api/submissions/${id}/results/${subCritId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -99,19 +105,27 @@ export default function CriterionScoringPage() {
         })
       });
       // Refresh
-      const res = await fetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
+      const res = await authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
       if (res.ok) setResults(await res.json());
     } catch (err) {
       console.error("Error saving score override:", err);
     }
   };
 
-  const chapterSubtotal = results.reduce((acc, r) => {
+  // An unscored sub-criterion contributes to neither side of the subtotal, so the fraction shown
+  // describes only what was actually assessed.
+  const scoredResults = results.filter(r => {
+    const v = overrideScores[r.sub_criterion_id] !== undefined ? overrideScores[r.sub_criterion_id] : r.ai_score;
+    return v !== null && v !== undefined && !Number.isNaN(v);
+  });
+
+  const chapterSubtotal = scoredResults.reduce((acc, r) => {
     const scoreVal = overrideScores[r.sub_criterion_id] !== undefined ? overrideScores[r.sub_criterion_id] : r.ai_score;
     return acc + (scoreVal || 0);
   }, 0);
 
-  const chapterMaxTotal = results.reduce((acc, r) => acc + (r.max_marks || 0), 0);
+  const chapterMaxTotal = scoredResults.reduce((acc, r) => acc + (r.max_marks || 0), 0);
+  const unscoredCount = results.length - scoredResults.length;
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body flex flex-col">
@@ -168,6 +182,11 @@ export default function CriterionScoringPage() {
                 <span className="text-lg font-bold text-primary">
                   {chapterSubtotal.toFixed(1)} / {chapterMaxTotal.toFixed(1)}
                 </span>
+                {unscoredCount > 0 && (
+                  <span className="text-[10px] text-red-700 block font-semibold">
+                    {unscoredCount} not scored, excluded
+                  </span>
+                )}
               </div>
 
               <button
@@ -209,13 +228,23 @@ export default function CriterionScoringPage() {
                         {item.score_consistency_flag && (
                           <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 text-xs font-semibold rounded-full flex items-center gap-1">
                             <span className="material-symbols-outlined text-sm">warning</span>
-                            <span>Double-Scored Disagreement</span>
+                            <span>Runs disagreed: {item.ai_score_run_1} vs {item.ai_score_run_2}</span>
                           </span>
                         )}
 
-                        <span className="px-3 py-1 bg-surface-container text-primary font-bold text-xs rounded-full">
-                          AI Suggests: {item.ai_score} / {item.max_marks}
-                        </span>
+                        {item.ai_score === null || item.ai_score === undefined ? (
+                          <span
+                            className="px-3 py-1 bg-red-100 text-red-800 border border-red-300 font-bold text-xs rounded-full flex items-center gap-1"
+                            title={item.error_detail || 'The scorer did not return a mark for this sub-criterion.'}
+                          >
+                            <span className="material-symbols-outlined text-sm">error</span>
+                            <span>Not scored — enter a mark manually</span>
+                          </span>
+                        ) : (
+                          <span className="px-3 py-1 bg-surface-container text-primary font-bold text-xs rounded-full">
+                            AI Suggests: {item.ai_score} / {item.max_marks}
+                          </span>
+                        )}
                       </div>
                     </div>
 

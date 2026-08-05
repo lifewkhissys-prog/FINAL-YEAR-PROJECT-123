@@ -20,8 +20,14 @@ def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
     tcMar = parse_xml(f'<w:tcMar {nsdecls("w")}><w:top w:w="{top}" w:type="dxa"/><w:bottom w:w="{bottom}" w:type="dxa"/><w:left w:w="{left}" w:type="dxa"/><w:right w:w="{right}" w:type="dxa"/></w:tcMar>')
     tcPr.append(tcMar)
 
-def generate_thesis_docx_report(submission, results, rubric_criteria, narrative_text: str) -> io.BytesIO:
-    """Generates a professional Word (.docx) assessment document matching the official Critical Assessment Report format."""
+def generate_thesis_docx_report(submission, results, summary, narrative_text: str) -> io.BytesIO:
+    """
+    Generates a professional Word (.docx) assessment document matching the official Critical
+    Assessment Report format.
+
+    `summary` carries the aggregate mark and its Appendix 4.1 grade band; pass an empty dict to omit
+    the mark table (for example when no criterion was successfully scored).
+    """
     doc = Document()
 
     # Set 1-inch margins on all sides
@@ -91,7 +97,135 @@ def generate_thesis_docx_report(submission, results, rubric_criteria, narrative_
 
     doc.add_paragraph()
 
-    # 3. Parse Markdown Report into Styled Docx Paragraphs and Tables
+    # 3. Rubric Mark Table — the marks the narrative is based on. Without this the exported report
+    #    carries a critique with no scores attached.
+    if summary and results:
+        h_marks = doc.add_paragraph()
+        r_h_marks = h_marks.add_run("Rubric Assessment Summary")
+        r_h_marks.font.name = "Arial"
+        r_h_marks.font.size = Pt(13)
+        r_h_marks.font.bold = True
+        r_h_marks.font.color.rgb = RGBColor(15, 41, 66)
+
+        if summary.get("rubric_source"):
+            p_src = doc.add_paragraph()
+            r_src = p_src.add_run(f"Mark scheme: {summary['rubric_source']}")
+            r_src.font.name = "Calibri"
+            r_src.font.size = Pt(8.5)
+            r_src.font.italic = True
+            r_src.font.color.rgb = RGBColor(90, 90, 90)
+
+        # Group sub-criteria under their parent criterion, preserving order of appearance.
+        grouped = {}
+        for row in results:
+            grouped.setdefault(row.get("criterion_name") or "Unassigned", []).append(row)
+
+        headers = ["Criterion / Sub-criterion", "Max", "AI", "Supervisor", "Awarded"]
+        mark_col_widths = [Inches(3.3), Inches(0.7), Inches(0.7), Inches(0.9), Inches(0.9)]
+
+        row_count = 1 + sum(len(rows) + 1 for rows in grouped.values()) + 1
+        mt = doc.add_table(rows=row_count, cols=len(headers))
+        mt.alignment = WD_TABLE_ALIGNMENT.CENTER
+        mt.autofit = False
+
+        def _write(cell, text, *, bold=False, size=9, bg=None, align=None, color=None):
+            if bg:
+                set_cell_background(cell, bg)
+            set_cell_margins(cell, top=90, bottom=90, left=110, right=110)
+            p = cell.paragraphs[0]
+            r = p.add_run(text)
+            r.font.name = "Calibri"
+            r.font.size = Pt(size)
+            r.font.bold = bold
+            if color:
+                r.font.color.rgb = color
+            if align is not None:
+                p.alignment = align
+
+        # Header
+        for c_idx, htext in enumerate(headers):
+            cell = mt.rows[0].cells[c_idx]
+            cell.width = mark_col_widths[c_idx]
+            _write(cell, htext, bold=True, size=9, bg="0F2942",
+                   align=WD_ALIGN_PARAGRAPH.CENTER if c_idx else None,
+                   color=RGBColor(255, 255, 255))
+
+        r_i = 1
+        for crit_name, rows in grouped.items():
+            crit_max = sum(x.get("max_marks") or 0.0 for x in rows)
+            crit_awarded = sum(x.get("effective_score") or 0.0 for x in rows)
+
+            # Criterion subtotal row
+            for c_idx, text in enumerate([
+                crit_name, f"{crit_max:g}", "", "", f"{crit_awarded:g}"
+            ]):
+                cell = mt.rows[r_i].cells[c_idx]
+                cell.width = mark_col_widths[c_idx]
+                _write(cell, text, bold=True, size=9, bg="EAF0F6",
+                       align=WD_ALIGN_PARAGRAPH.CENTER if c_idx else None)
+            r_i += 1
+
+            for row in rows:
+                awarded = row.get("effective_score")
+                ai = row.get("ai_score")
+                override = row.get("supervisor_override_score")
+                cells = [
+                    f"    {row.get('sub_criterion_name') or ''}",
+                    f"{row.get('max_marks') or 0:g}",
+                    "not scored" if ai is None else f"{ai:g}",
+                    "—" if override is None else f"{override:g}",
+                    "not scored" if awarded is None else f"{awarded:g}",
+                ]
+                for c_idx, text in enumerate(cells):
+                    cell = mt.rows[r_i].cells[c_idx]
+                    cell.width = mark_col_widths[c_idx]
+                    _write(cell, text, size=8.5,
+                           bg="FFFFFF" if awarded is not None else "FDF3F3",
+                           align=WD_ALIGN_PARAGRAPH.CENTER if c_idx else None,
+                           color=RGBColor(150, 40, 40) if awarded is None else None)
+                r_i += 1
+
+        # Total row
+        pct = summary.get("percentage")
+        total_cells = [
+            f"TOTAL — Grade {summary.get('grade') or '—'} ({summary.get('interpretation') or 'Not graded'})",
+            f"{summary.get('max_possible', 0):g}",
+            "",
+            "",
+            f"{summary.get('total_score', 0):g}" + (f"  ({pct}%)" if pct is not None else ""),
+        ]
+        for c_idx, text in enumerate(total_cells):
+            cell = mt.rows[r_i].cells[c_idx]
+            cell.width = mark_col_widths[c_idx]
+            _write(cell, text, bold=True, size=9, bg="0F2942",
+                   align=WD_ALIGN_PARAGRAPH.CENTER if c_idx else None,
+                   color=RGBColor(255, 255, 255))
+
+        doc.add_paragraph()
+
+        notes = []
+        if summary.get("unscored_criteria"):
+            notes.append(
+                f"{summary['unscored_criteria']} sub-criterion/criteria could not be scored and are "
+                f"excluded from the total and percentage above."
+            )
+        if summary.get("is_referred") and summary.get("reassessment_cap"):
+            notes.append(
+                f"A referred thesis may be revised for re-assessment, but the re-assessment mark "
+                f"is capped at {summary['reassessment_cap']:g} "
+                f"(KNUST HDR Guide 2016, Appendix 4.1)."
+            )
+        for note in notes:
+            p_note = doc.add_paragraph()
+            r_note = p_note.add_run(note)
+            r_note.font.name = "Calibri"
+            r_note.font.size = Pt(8.5)
+            r_note.font.italic = True
+            r_note.font.color.rgb = RGBColor(150, 40, 40)
+
+        doc.add_paragraph()
+
+    # 4. Parse Markdown Report into Styled Docx Paragraphs and Tables
     lines = narrative_text.split("\n")
     in_table = False
     table_rows_data = []

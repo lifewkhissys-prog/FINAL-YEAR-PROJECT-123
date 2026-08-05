@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 const PIPELINE_STEPS = [
   { key: 'preliminary_check', label: 'Section Readiness', desc: 'Verifying core chapters & objectives' },
@@ -61,9 +62,9 @@ export default function StructureMappingPage() {
   const loadData = async () => {
     try {
       const [prelimRes, flowRes, plagRes] = await Promise.all([
-        fetch(`/api/submissions/${id}/preliminary-check`),
-        fetch(`/api/submissions/${id}/flow-analysis`),
-        fetch(`/api/submissions/${id}/plagiarism`)
+        authFetch(`/api/submissions/${id}/preliminary-check`),
+        authFetch(`/api/submissions/${id}/flow-analysis`),
+        authFetch(`/api/submissions/${id}/plagiarism`)
       ]);
 
       if (prelimRes.ok) setPrelimCheck(await prelimRes.json());
@@ -108,9 +109,9 @@ export default function StructureMappingPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-surface-container-high pb-6">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider mb-1">
-              <span>Step 2 of 6</span>
+              <span>Step 2 of 4</span>
               <span>•</span>
-              <span>RubriScot Alignment Check</span>
+              <span>Structure & Alignment Check</span>
             </div>
             <h1 className="font-serif text-3xl font-bold text-primary">Structure Mapping & Alignment</h1>
             <p className="text-sm text-on-surface-variant mt-1">
@@ -164,7 +165,7 @@ export default function StructureMappingPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full">
-                  {prelimCheck?.pipeline_progress || 15}% Complete
+                  {prelimCheck?.pipeline_progress || 20}% Complete
                 </span>
               </div>
             </div>
@@ -173,7 +174,7 @@ export default function StructureMappingPage() {
             <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
               <div
                 className="bg-primary h-full transition-all duration-500 ease-out"
-                style={{ width: `${prelimCheck?.pipeline_progress || 15}%` }}
+                style={{ width: `${prelimCheck?.pipeline_progress || 20}%` }}
               />
             </div>
 
@@ -250,8 +251,9 @@ export default function StructureMappingPage() {
           </div>
         )}
 
-        {/* Dynamic Top Summary Cards Grid */}
+        {/* Dynamic Top Summary Cards Grid (Sequential Step 1 -> Step 2 -> Step 3) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Card 1: Step 1/5 Readiness Status */}
           <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Readiness Status</span>
@@ -263,19 +265,7 @@ export default function StructureMappingPage() {
             <p className="text-xs text-on-surface-variant mt-1">Core section & RQ presence verified</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Plagiarism Scan</span>
-              <span className="material-symbols-outlined text-primary text-xl">find_in_page</span>
-            </div>
-            <p className="text-2xl font-bold text-primary">
-              {plagiarismData?.overall_plagiarism_score !== null && plagiarismData?.overall_plagiarism_score !== undefined
-                ? `${plagiarismData.overall_plagiarism_score}%`
-                : isFailed ? 'Halted' : currentStepIdx === 2 ? 'Step 3/5: Scanning...' : currentStepIdx > 2 ? 'Scanned ✓' : 'Step 3/5: Pending'}
-            </p>
-            <p className="text-xs text-on-surface-variant mt-1">Copyleaks similarity scan roll-up</p>
-          </div>
-
+          {/* Card 2: Step 2/5 Scope Alignment */}
           <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Scope Alignment</span>
@@ -286,7 +276,81 @@ export default function StructureMappingPage() {
             </p>
             <p className="text-xs text-on-surface-variant mt-1">Objectives mapped to empirical results</p>
           </div>
+
+          {/* Card 3: Step 3/5 Plagiarism Scan */}
+          <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Plagiarism Scan</span>
+              <span className="material-symbols-outlined text-primary text-xl">find_in_page</span>
+            </div>
+            <p className="text-2xl font-bold text-primary">
+              {plagiarismData?.overall_plagiarism_score !== null && plagiarismData?.overall_plagiarism_score !== undefined
+                ? `${plagiarismData.overall_plagiarism_score}%`
+                : isFailed ? 'Halted' : currentStepIdx === 2 ? 'Step 3/5: Scanning...' : currentStepIdx > 2 ? 'Scanned ✓' : 'Step 3/5: Pending'}
+            </p>
+            <p className="text-xs text-on-surface-variant mt-1" title={plagiarismData?.provider_description || ''}>
+              Internal similarity index — not a commercial plagiarism check
+            </p>
+          </div>
         </div>
+
+        {/* Mechanical compliance findings against the KNUST HDR Guide */}
+        {Array.isArray(prelimCheck?.findings) && prelimCheck.findings.length > 0 && (
+          <div className="bg-white rounded-xl border border-surface-container-highest p-6 shadow-sm space-y-4">
+            <div>
+              <h2 className="font-serif text-xl font-bold text-primary flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">rule</span>
+                <span>Guide Compliance Checks</span>
+              </h2>
+              <p className="text-xs text-on-surface-variant mt-1">
+                Mechanical checks against the KNUST Guide for Preparation and Evaluation of Higher Degree
+                Research Thesis (June 2016). These are measured, not inferred.
+                {prelimCheck.structure_option && (
+                  <> Structure detected: <span className="font-semibold">
+                    {prelimCheck.structure_option === 'manuscript'
+                      ? 'Option 2 — manuscript-based'
+                      : 'Option 1 — monograph'}
+                  </span>.</>
+                )}
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-surface-container-high text-xs uppercase tracking-wider text-on-surface-variant">
+                    <th className="p-2.5 font-bold">Check</th>
+                    <th className="p-2.5 font-bold">Result</th>
+                    <th className="p-2.5 font-bold">Detail</th>
+                    <th className="p-2.5 font-bold">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prelimCheck.findings.map((f, i) => (
+                    <tr key={i} className="border-b border-surface-container last:border-0">
+                      <td className="p-2.5 font-semibold text-primary whitespace-nowrap">{f.check}</td>
+                      <td className="p-2.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                          f.status === 'pass' ? 'bg-emerald-100 text-emerald-800'
+                            : f.status === 'fail' ? 'bg-red-100 text-red-800'
+                            : f.status === 'warn' ? 'bg-amber-100 text-amber-800'
+                            : 'bg-surface-container text-on-surface-variant'
+                        }`}>
+                          {f.status === 'not_applicable' ? 'N/A' : f.status.toUpperCase()}
+                        </span>
+                        {f.blocking && f.status === 'fail' && (
+                          <span className="block text-[10px] text-red-700 font-semibold mt-0.5">Blocks assessment</span>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-on-surface-variant">{f.detail}</td>
+                      <td className="p-2.5 text-[11px] text-on-surface-variant italic">{f.source}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Logical Alignment Matrix Table */}
         <div className="bg-white rounded-xl border border-surface-container-highest p-6 shadow-sm space-y-4">

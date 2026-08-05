@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 export default function FinalNarrativeReportPage() {
   const { id } = useParams();
@@ -16,7 +17,7 @@ export default function FinalNarrativeReportPage() {
   useEffect(() => {
     async function loadReport() {
       try {
-        const res = await fetch(`/api/submissions/${id}/report`);
+        const res = await authFetch(`/api/submissions/${id}/report`);
         if (res.ok) {
           const data = await res.json();
           setReportText(data.narrative_report_edited || data.narrative_report || '');
@@ -37,7 +38,7 @@ export default function FinalNarrativeReportPage() {
     setIsSaving(true);
     setSaveSuccess(false);
     try {
-      await fetch(`/api/submissions/${id}/report`, {
+      await authFetch(`/api/submissions/${id}/report`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -57,7 +58,7 @@ export default function FinalNarrativeReportPage() {
   const handleExportDocx = async () => {
     setIsExporting(true);
     try {
-      const res = await fetch(`/api/submissions/${id}/export`);
+      const res = await authFetch(`/api/submissions/${id}/export`);
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -86,7 +87,7 @@ export default function FinalNarrativeReportPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-surface-container-high pb-6">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider mb-1">
-              <span>Step 5 of 6</span>
+              <span>Step 4 of 4</span>
               <span>•</span>
               <span>Synthesized Evaluation Draft</span>
             </div>
@@ -145,10 +146,11 @@ export default function FinalNarrativeReportPage() {
               onChange={(e) => setRecommendation(e.target.value)}
               className="bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2 text-sm font-semibold text-primary outline-none focus:border-primary"
             >
-              <option value="Pass (Unconditional)">Pass (Unconditional)</option>
-              <option value="Pass (Minor Revisions Required)">Pass (Minor Revisions Required)</option>
-              <option value="Conditionally Acceptable (Major Revisions)">Conditionally Acceptable (Major Revisions)</option>
-              <option value="Fail (Resubmission Required)">Fail (Resubmission Required)</option>
+              <option value="Pass (Unconditional)">Pass — no corrections required</option>
+              <option value="Pass (Minor Revisions Required)">Pass — minor corrections required</option>
+              <option value="Conditionally Acceptable (Major Revisions)">Conditionally acceptable — major corrections required</option>
+              <option value="Referred (Re-assessment, capped at 60)">Referred — may be revised for re-assessment (mark capped at 60)</option>
+              <option value="Fail (Resubmission Required)">Fail</option>
             </select>
           </div>
         </div>

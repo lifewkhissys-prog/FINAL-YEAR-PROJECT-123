@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 export default function SupervisorDashboardPage() {
   const navigate = useNavigate();
@@ -10,7 +11,7 @@ export default function SupervisorDashboardPage() {
   useEffect(() => {
     async function loadSubmissions() {
       try {
-        const res = await fetch('/api/submissions');
+        const res = await authFetch('/api/submissions');
         if (res.ok) {
           setSubmissions(await res.json());
         }
@@ -181,13 +182,41 @@ export default function SupervisorDashboardPage() {
                       </td>
 
                       <td className="p-3">
-                        <span className="font-bold text-primary text-sm">{sub.total_score} / {sub.max_possible}</span>
-                        <span className="text-[11px] text-on-surface-variant block">({sub.percentage}%)</span>
+                        {sub.percentage === null || sub.percentage === undefined ? (
+                          <span className="text-[11px] text-on-surface-variant">Not graded</span>
+                        ) : (
+                          <>
+                            <span className="font-bold text-primary text-sm">{sub.total_score} / {sub.max_possible}</span>
+                            <span className="text-[11px] text-on-surface-variant block">
+                              ({sub.percentage}%)
+                              {sub.grade && (
+                                <span className={`ml-1 font-bold ${
+                                  sub.grade === 'A' ? 'text-emerald-700'
+                                    : sub.grade === 'B' ? 'text-emerald-600'
+                                    : sub.grade === 'C' ? 'text-amber-700'
+                                    : sub.grade === 'E' ? 'text-orange-700'
+                                    : 'text-red-700'
+                                }`}>
+                                  {sub.grade} · {sub.grade_interpretation}
+                                </span>
+                              )}
+                            </span>
+                            {sub.unscored_criteria > 0 && (
+                              <span className="text-[10px] text-red-700 block">
+                                {sub.unscored_criteria} criteri{sub.unscored_criteria === 1 ? 'on' : 'a'} not scored
+                              </span>
+                            )}
+                          </>
+                        )}
                       </td>
 
                       <td className="p-3">
-                        <span className="px-2.5 py-0.5 bg-surface-container text-primary font-semibold text-[11px] rounded-full capitalize">
-                          {sub.status}
+                        <span className={`px-2.5 py-0.5 font-semibold text-[11px] rounded-full capitalize ${
+                          sub.status === 'failed' || sub.status === 'preliminary_check_failed'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-surface-container text-primary'
+                        }`} title={sub.error_detail || ''}>
+                          {sub.status === 'preliminary_check_failed' ? 'not assessable' : sub.status}
                         </span>
                       </td>
 

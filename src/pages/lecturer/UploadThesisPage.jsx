@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 export default function UploadThesisPage() {
   const navigate = useNavigate();
@@ -22,7 +23,7 @@ export default function UploadThesisPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedFile) {
-      setError('Please select a thesis document (.docx, .pdf, or .txt) to upload.');
+      setError('Please select a thesis document (.docx or .pdf) to upload.');
       return;
     }
 
@@ -38,7 +39,7 @@ export default function UploadThesisPage() {
       formData.append('institution', institution);
       formData.append('file', selectedFile);
 
-      const res = await fetch('/api/submissions', {
+      const res = await authFetch('/api/submissions', {
         method: 'POST',
         body: formData,
       });
@@ -52,7 +53,7 @@ export default function UploadThesisPage() {
       const submissionId = data.id;
 
       // Trigger background agent pipeline
-      await fetch(`/api/submissions/${submissionId}/assess`, {
+      await authFetch(`/api/submissions/${submissionId}/assess`, {
         method: 'POST',
       });
 
@@ -160,11 +161,16 @@ export default function UploadThesisPage() {
                     onChange={(e) => setDegreeLevel(e.target.value)}
                     className="bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                   >
-                    <option value="undergraduate">Undergraduate (BSc FYP)</option>
-                    <option value="msc">MSc (Taught Master's)</option>
-                    <option value="mphil">MPhil (KNUST Appendix 4.4)</option>
-                    <option value="phd">PhD (KNUST Appendix 4.2)</option>
+                    <option value="undergraduate">Undergraduate (BSc FYP) — departmental rubric</option>
+                    <option value="msc">MSc (Taught Master's) — departmental rubric</option>
+                    <option value="mphil">MPhil — KNUST HDR Guide, Appendix 4.4</option>
+                    <option value="phd">PhD (Doctoral) — KNUST HDR Guide, Appendix 4.2</option>
                   </select>
+                  <p className="text-[11px] text-on-surface-variant mt-1">
+                    {degreeLevel === 'mphil' || degreeLevel === 'phd'
+                      ? 'Marked on the official KNUST HDR Guide (2016) scheme, out of 100.'
+                      : 'The KNUST HDR Guide specifies mark schemes for PhD, MPhil and taught Master’s degrees only. This level uses a departmental rubric.'}
+                  </p>
                 </div>
               </div>
 

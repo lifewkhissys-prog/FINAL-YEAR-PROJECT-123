@@ -1,6 +1,6 @@
 import api from './axiosInstance';
 
-export const login    = (data) => api.post('/auth/login', data);
-export const register = (data) => api.post('/auth/register', data);
-export const logout   = ()     => api.post('/auth/logout');
-export const getMe    = ()     => api.get('/auth/me');
+export const login    = (data) => api.post('/api/auth/login', data);
+export const register = (data) => api.post('/api/auth/register', data);
+export const logout   = ()     => api.post('/api/auth/logout');
+export const getMe    = ()     => api.get('/api/auth/me');

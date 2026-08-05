@@ -1,8 +1,19 @@
 import re
 from typing import Dict, List, Any, Tuple
-from app.services.embeddings import generate_embedding, cosine_similarity
+from app.services.embeddings import generate_embedding, cosine_similarity, embeddings_are_degraded
 
-# Common academic reference corpus passages for local cross-checking
+# Local reference passages used for cross-checking. This is a small illustrative set, NOT a
+# plagiarism corpus: a low similarity score here means only that the text does not resemble these
+# three passages. The KNUST Guide (Literature Review section, and Section 21 of the Graduate
+# Handbook) treats plagiarism as grounds for revoking a degree, so this figure must never be
+# presented as a cleared plagiarism check.
+PROVIDER_NAME = "internal_ngram_vector"
+
+PROVIDER_DESCRIPTION = (
+    "Internal n-gram and vector similarity against a local reference set of "
+    "{count} passages. Not a commercial plagiarism service."
+)
+
 ACADEMIC_CORPUS = [
     {
         "title": "Standard Machine Learning Evaluation Benchmarks",
@@ -40,11 +51,23 @@ def compute_jaccard_similarity(text1: str, text2: str, n: int = 3) -> float:
 
 async def run_plagiarism_check(full_text: str, chapter_chunks: Dict[str, str]) -> Tuple[float, List[Dict[str, Any]]]:
     """
-    Executes real text analysis and vector/n-gram similarity check for thesis text.
-    Returns (overall_plagiarism_score, list_of_section_checks).
+    Run n-gram and vector similarity of the thesis against a small local reference set, plus an
+    internal repetition check across the thesis's own chapters.
+
+    Returns (overall_similarity_score, list_of_section_checks). The score is a similarity index
+    against ACADEMIC_CORPUS only — it is not a plagiarism verdict, and callers must present it with
+    the provider description attached.
+
+    When no real embedding model is loaded, vector similarity is meaningless (see
+    embeddings.embeddings_are_degraded). In that case the vector term is dropped and the score is
+    computed from n-gram overlap alone rather than from noise.
     """
     section_checks = []
     check_chapters = ["literature_review", "methodology", "introduction", "discussion"]
+
+    degraded = embeddings_are_degraded()
+    ngram_weight, vector_weight = (1.0, 0.0) if degraded else (0.4, 0.6)
+    method = "n-gram only (no embedding model available)" if degraded else "n-gram + vector"
 
     total_sim = 0.0
     count = 0
@@ -57,19 +80,19 @@ async def run_plagiarism_check(full_text: str, chapter_chunks: Dict[str, str]) -
         matched_sources = []
         max_section_sim = 0.0
 
-        # 1. Compare against reference corpus using n-gram & vector similarity
-        ch_vec = generate_embedding(text[:1000])
+        # 1. Compare against reference corpus using n-gram &/or vector similarity
+        ch_vec = None if degraded else generate_embedding(text[:1000])
 
         for corpus_item in ACADEMIC_CORPUS:
-            # N-gram similarity
             ngram_sim = compute_jaccard_similarity(text, corpus_item["text"], n=3)
 
-            # Vector similarity
-            corpus_vec = generate_embedding(corpus_item["text"])
-            vec_sim = cosine_similarity(ch_vec, corpus_vec) * 100.0
+            if degraded:
+                vec_sim = 0.0
+            else:
+                corpus_vec = generate_embedding(corpus_item["text"])
+                vec_sim = cosine_similarity(ch_vec, corpus_vec) * 100.0
 
-            # Combined match percentage
-            combined_sim = round((ngram_sim * 0.4) + (vec_sim * 0.6), 1)
+            combined_sim = round((ngram_sim * ngram_weight) + (vec_sim * vector_weight), 1)
             if combined_sim > max_section_sim:
                 max_section_sim = combined_sim
 
@@ -80,7 +103,8 @@ async def run_plagiarism_check(full_text: str, chapter_chunks: Dict[str, str]) -
                     "similarity": combined_sim
                 })
 
-        # Self-repetition check across other chapters of the thesis
+        # 2. Self-repetition across the thesis's own chapters. This raises the section score,
+        #    because verbatim reuse between chapters is a defect the supervisor should see.
         for other_ch_name, other_text in chapter_chunks.items():
             if other_ch_name != ch_name and len(other_text) > 50:
                 rep_sim = compute_jaccard_similarity(text, other_text, n=4)
@@ -90,15 +114,18 @@ async def run_plagiarism_check(full_text: str, chapter_chunks: Dict[str, str]) -
                         "matched_text": f"High text repetition between {ch_name} and {other_ch_name}.",
                         "similarity": round(rep_sim, 1)
                     })
+                    max_section_sim = max(max_section_sim, rep_sim)
 
-        # Section final score
-        section_sim = round(min(max_section_sim, 45.0), 1)
+        section_sim = round(min(max_section_sim, 100.0), 1)
 
         section_checks.append({
             "section_name": ch_name,
             "similarity_percentage": section_sim,
             "matched_sources": matched_sources,
-            "provider": "copyleaks_vector_analyzer"
+            "provider": PROVIDER_NAME,
+            "method": method,
+            "reference_set_size": len(ACADEMIC_CORPUS),
+            "degraded": degraded,
         })
 
         total_sim += section_sim

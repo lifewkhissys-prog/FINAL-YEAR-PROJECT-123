@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 export default function VerificationCheckPage() {
   const { id } = useParams();
@@ -12,7 +13,7 @@ export default function VerificationCheckPage() {
   useEffect(() => {
     async function loadVerificationData() {
       try {
-        const res = await fetch(`/api/submissions/${id}/results`);
+        const res = await authFetch(`/api/submissions/${id}/results`);
         if (res.ok) {
           const data = await res.json();
           setResults(Array.isArray(data) ? data : (data.results || []));
@@ -26,10 +27,22 @@ export default function VerificationCheckPage() {
     loadVerificationData();
   }, [id]);
 
-  const verifiedCount = results.filter(r => r.verifier_passed).length;
-  const totalCount = results.length;
-  const passPercentage = totalCount > 0 ? Math.round((verifiedCount / totalCount) * 100) : 100;
+  const scored = results.filter(r => !r.scoring_failed && r.ai_score !== null);
+  const unscored = results.filter(r => r.scoring_failed || r.ai_score === null);
+  const verifiedCount = scored.filter(r => r.verifier_passed).length;
+  const totalCount = scored.length;
+  const passPercentage = totalCount > 0 ? Math.round((verifiedCount / totalCount) * 100) : 0;
   const flagCount = results.filter(r => r.score_consistency_flag || !r.verifier_passed).length;
+
+  // Mean of the confidence the scorer actually reported, over the criteria that were scored.
+  const confidences = scored.map(r => r.confidence_score).filter(c => typeof c === 'number');
+  const meanConfidence = confidences.length
+    ? (confidences.reduce((a, b) => a + b, 0) / confidences.length).toFixed(1)
+    : null;
+
+  // A second scoring run happens only for low-confidence criteria, so most rows legitimately have
+  // a single run. Saying so is more honest than implying two runs agreed.
+  const dualRunCount = scored.filter(r => r.ai_score_run_2 !== null && r.ai_score_run_2 !== undefined).length;
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body flex flex-col">
@@ -41,7 +54,7 @@ export default function VerificationCheckPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-surface-container-high pb-6">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-primary uppercase tracking-wider mb-1">
-              <span>Step 4 of 6</span>
+              <span>Step 3 of 4</span>
               <span>•</span>
               <span>Verifier Agent Audit</span>
             </div>
@@ -75,8 +88,14 @@ export default function VerificationCheckPage() {
               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Overall Verifier Audit</span>
               <span className="material-symbols-outlined text-primary text-xl">verified</span>
             </div>
-            <p className="text-3xl font-bold text-emerald-700">{passPercentage}%</p>
-            <p className="text-xs text-on-surface-variant mt-1">{verifiedCount} of {totalCount} sub-criteria verified</p>
+            <p className={`text-3xl font-bold ${passPercentage >= 80 ? 'text-emerald-700' : passPercentage >= 50 ? 'text-amber-700' : 'text-red-700'}`}>
+              {totalCount > 0 ? `${passPercentage}%` : '—'}
+            </p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              {totalCount > 0
+                ? `${verifiedCount} of ${totalCount} scored sub-criteria verified by an independent agent`
+                : 'No sub-criteria were scored'}
+            </p>
           </div>
 
           <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
@@ -85,7 +104,12 @@ export default function VerificationCheckPage() {
               <span className="material-symbols-outlined text-amber-600 text-xl">warning</span>
             </div>
             <p className="text-3xl font-bold text-amber-700">{flagCount}</p>
-            <p className="text-xs text-on-surface-variant mt-1">Scores requiring supervisor review</p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              Scores requiring supervisor review
+              {dualRunCount > 0
+                ? ` · ${dualRunCount} of ${totalCount} re-scored on a second run`
+                : ' · single scoring run (no low-confidence criteria)'}
+            </p>
           </div>
 
           <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
@@ -93,10 +117,38 @@ export default function VerificationCheckPage() {
               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Agent Confidence</span>
               <span className="material-symbols-outlined text-primary text-xl">psychology</span>
             </div>
-            <p className="text-3xl font-bold text-primary">91.4%</p>
-            <p className="text-xs text-on-surface-variant mt-1">Mean model confidence score</p>
+            <p className="text-3xl font-bold text-primary">{meanConfidence !== null ? `${meanConfidence}%` : '—'}</p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              {meanConfidence !== null
+                ? `Mean self-reported confidence across ${confidences.length} scored sub-criteria`
+                : 'No confidence scores available'}
+            </p>
           </div>
         </div>
+
+        {unscored.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <span className="material-symbols-outlined text-red-700 text-xl">error</span>
+              <div>
+                <p className="text-sm font-bold text-red-800">
+                  {unscored.length} sub-criteri{unscored.length === 1 ? 'on was' : 'a were'} not scored
+                </p>
+                <p className="text-xs text-red-700 mt-1">
+                  These are excluded from the total and the percentage. No mark has been assigned for them.
+                </p>
+                <ul className="mt-2 space-y-1">
+                  {unscored.map(r => (
+                    <li key={r.id} className="text-xs text-red-700">
+                      <span className="font-semibold">{r.sub_criterion_name}</span>
+                      {r.error_detail ? ` — ${r.error_detail}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Audit Detail Cards */}
         <div className="bg-white rounded-xl border border-surface-container-highest p-6 shadow-sm space-y-6">

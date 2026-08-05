@@ -1,5 +1,6 @@
 import os
-import shutil
+import uuid
+from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, status
 from fastapi.responses import StreamingResponse
@@ -7,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.database import get_db
+from app.dependencies import require_lecturer
+from app.models.user import User
 from app.models.thesis_critique import (
     ThesisSubmission,
     RubricCriterion,
@@ -20,9 +24,20 @@ from app.models.thesis_critique import (
 from app.services.thesis_parser import parse_thesis_document
 from app.services.agent_pipeline import execute_thesis_assessment_pipeline
 from app.services.embeddings import generate_embedding
+from app.services.grading_scale import grade_for
+from app.services.plagiarism_service import PROVIDER_DESCRIPTION, ACADEMIC_CORPUS
 from app.services.docx_exporter import generate_thesis_docx_report
 
 router = APIRouter(prefix="/api", tags=["Thesis Assessment"])
+
+
+def check_submission_access(sub: ThesisSubmission, user: User):
+    if sub.lecturer_id is not None and sub.lecturer_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access or modify this thesis submission."
+        )
+
 
 
 # Pydantic Schemas
@@ -55,7 +70,11 @@ class GradedExampleCreate(BaseModel):
 # Endpoints
 
 @router.get("/rubric/criteria")
-async def get_rubric_criteria(degree_level: str = "mphil", db: AsyncSession = Depends(get_db)):
+async def get_rubric_criteria(
+    degree_level: str = "mphil",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """List rubric criteria with nested sub-criteria."""
     stmt = (
         select(RubricCriterion)
@@ -91,7 +110,12 @@ async def get_rubric_criteria(degree_level: str = "mphil", db: AsyncSession = De
 
 
 @router.patch("/rubric/sub-criteria/{id}")
-async def update_sub_criterion(id: int, payload: SubCriterionUpdate, db: AsyncSession = Depends(get_db)):
+async def update_sub_criterion(
+    id: int,
+    payload: SubCriterionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Supervisor edits a sub-criterion description or max marks."""
     stmt = select(RubricSubCriterion).where(RubricSubCriterion.id == id)
     sub = (await db.execute(stmt)).scalars().first()
@@ -116,7 +140,10 @@ async def update_sub_criterion(id: int, payload: SubCriterionUpdate, db: AsyncSe
 
 
 @router.get("/rubric/chapters")
-async def get_rubric_chapters(db: AsyncSession = Depends(get_db)):
+async def get_rubric_chapters(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """List the 8 chapter names and their mapped sub-criteria."""
     stmt = select(ChapterSubCriteriaMap)
     maps = (await db.execute(stmt)).scalars().all()
@@ -127,24 +154,49 @@ async def get_rubric_chapters(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/submissions")
-async def list_submissions(db: AsyncSession = Depends(get_db)):
+async def list_submissions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """List thesis submissions for the Supervisor Dashboard."""
     stmt = select(ThesisSubmission).order_by(ThesisSubmission.submitted_at.desc())
     submissions = (await db.execute(stmt)).scalars().all()
+
+    # Filter submissions owned by current lecturer or unassigned legacy submissions
+    submissions = [
+        s for s in submissions
+        if s.lecturer_id is None or s.lecturer_id == current_user.id
+    ]
+
+    # One query for every sub-criterion, rather than one per result row.
+    sub_crit_marks = {
+        sc_id: max_marks
+        for sc_id, max_marks in (await db.execute(
+            select(RubricSubCriterion.id, RubricSubCriterion.max_marks)
+        )).all()
+    }
+
     out = []
     for s in submissions:
-        # Compute aggregate score
         res_stmt = select(AssessmentResult).where(AssessmentResult.submission_id == s.id)
         results = (await db.execute(res_stmt)).scalars().all()
 
         total_score = 0.0
         max_possible = 0.0
+        unscored = 0
         for r in results:
-            sub_c = (await db.execute(select(RubricSubCriterion).where(RubricSubCriterion.id == r.sub_criterion_id))).scalars().first()
-            if sub_c:
-                score_val = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
-                total_score += score_val
-                max_possible += sub_c.max_marks
+            max_marks = sub_crit_marks.get(r.sub_criterion_id)
+            if max_marks is None:
+                continue
+            score_val = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
+            if score_val is None:
+                unscored += 1
+                continue
+            total_score += score_val
+            max_possible += max_marks
+
+        percentage = round((total_score / max_possible * 100), 1) if max_possible > 0 else None
+        band = grade_for(percentage)
 
         out.append({
             "id": s.id,
@@ -159,7 +211,12 @@ async def list_submissions(db: AsyncSession = Depends(get_db)):
             "plagiarism_score": s.plagiarism_score,
             "total_score": round(total_score, 1),
             "max_possible": round(max_possible, 1),
-            "percentage": round((total_score / max_possible * 100), 1) if max_possible > 0 else 0.0,
+            "percentage": percentage,
+            "grade": band["grade"],
+            "grade_interpretation": band["interpretation"],
+            "is_referred": band["is_referred"],
+            "unscored_criteria": unscored,
+            "error_detail": s.error_detail,
             "supervisor_recommendation": s.supervisor_recommendation
         })
     return out
@@ -173,19 +230,59 @@ async def create_submission(
     programme: str = Form("Computer Engineering"),
     institution: str = Form("KNUST"),
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
 ):
     """Upload a thesis document (.docx / .pdf), parse text, and create submission."""
+    ext = Path(file.filename).suffix.lower() if file.filename else ""
+    if ext not in [".pdf", ".docx"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF (.pdf) and Word (.docx) documents are allowed."
+        )
+
+    filename_base = Path(file.filename).name if file.filename else "thesis.docx"
+    safe_filename = f"{uuid.uuid4().hex}_{filename_base}"
     os.makedirs("uploads", exist_ok=True)
-    file_location = f"uploads/{file.filename}"
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    file_location = os.path.join("uploads", safe_filename)
+
+    max_bytes = settings.THESIS_UPLOAD_MAX_MB * 1024 * 1024
+    total_bytes = 0
+
+    try:
+        with open(file_location, "wb") as buffer:
+            while chunk := await file.read(1024 * 1024):
+                total_bytes += len(chunk)
+                if total_bytes > max_bytes:
+                    buffer.close()
+                    if os.path.exists(file_location):
+                        os.remove(file_location)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"File exceeds maximum allowed upload size of {settings.THESIS_UPLOAD_MAX_MB}MB."
+                    )
+                buffer.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as e:
+        if os.path.exists(file_location):
+            os.remove(file_location)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save upload file: {e}"
+        )
 
     full_text = parse_thesis_document(file_location)
-    if not full_text:
-        full_text = f"Sample Thesis Content for {title} submitted by {student_name}."
+    if not full_text or len(full_text.strip()) == 0:
+        if os.path.exists(file_location):
+            os.remove(file_location)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to extract text content from the uploaded file. Please ensure the PDF or DOCX file contains readable text."
+        )
 
     sub = ThesisSubmission(
+        lecturer_id=current_user.id,
         student_name=student_name,
         title=title,
         degree_level=degree_level,
@@ -203,12 +300,19 @@ async def create_submission(
 
 
 @router.post("/submissions/{id}/assess")
-async def trigger_assessment(id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+async def trigger_assessment(
+    id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Trigger the multi-agent thesis assessment pipeline in background."""
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+
+    check_submission_access(sub, current_user)
 
     sub.status = "assessing"
     await db.commit()
@@ -219,26 +323,39 @@ async def trigger_assessment(id: int, background_tasks: BackgroundTasks, db: Asy
 
 
 @router.get("/submissions/{id}/preliminary-check")
-async def get_preliminary_check(id: int, db: AsyncSession = Depends(get_db)):
+async def get_preliminary_check(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
     return {
         "status": sub.status,
         "pipeline_step": sub.pipeline_step or ("completed" if sub.status in ["completed", "reviewed"] else "preliminary_check"),
         "pipeline_progress": sub.pipeline_progress if sub.pipeline_progress is not None else (100 if sub.status in ["completed", "reviewed"] else 15),
         "ready_for_evaluation": sub.preliminary_check_passed,
-        "notes": sub.preliminary_check_notes
+        "notes": sub.preliminary_check_notes,
+        "findings": sub.compliance_findings or [],
+        "structure_option": sub.structure_option,
+        "error_detail": sub.error_detail,
     }
 
 
 @router.get("/submissions/{id}/flow-analysis")
-async def get_flow_analysis(id: int, db: AsyncSession = Depends(get_db)):
+async def get_flow_analysis(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
     return {
         "status": sub.status,
         "flow_analysis_table": sub.flow_analysis_table
@@ -246,11 +363,16 @@ async def get_flow_analysis(id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/submissions/{id}/plagiarism")
-async def get_plagiarism_report(id: int, db: AsyncSession = Depends(get_db)):
+async def get_plagiarism_report(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
 
     checks_stmt = select(PlagiarismCheck).where(PlagiarismCheck.submission_id == id)
     checks = (await db.execute(checks_stmt)).scalars().all()
@@ -258,6 +380,7 @@ async def get_plagiarism_report(id: int, db: AsyncSession = Depends(get_db)):
     return {
         "status": sub.status,
         "overall_plagiarism_score": sub.plagiarism_score,
+        "provider_description": PROVIDER_DESCRIPTION.format(count=len(ACADEMIC_CORPUS)),
         "section_checks": [
             {
                 "section_name": c.section_name,
@@ -271,24 +394,31 @@ async def get_plagiarism_report(id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/submissions/{id}/results")
-async def get_assessment_results(id: int, db: AsyncSession = Depends(get_db)):
+async def get_assessment_results(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """List sub-criteria results with dual-scores, citations, and verifier status."""
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
 
     res_stmt = select(AssessmentResult).where(AssessmentResult.submission_id == id)
     results = (await db.execute(res_stmt)).scalars().all()
 
     out = []
+    total_score = 0.0
+    max_possible = 0.0
+    unscored = 0
     for r in results:
         sub_c = (await db.execute(select(RubricSubCriterion).where(RubricSubCriterion.id == r.sub_criterion_id))).scalars().first()
         criterion = None
         if sub_c:
             criterion = (await db.execute(select(RubricCriterion).where(RubricCriterion.id == sub_c.criterion_id))).scalars().first()
 
-        # Retrieve chapter mapping
         chap_stmt = select(ChapterSubCriteriaMap).where(
             ChapterSubCriteriaMap.sub_criterion_id == r.sub_criterion_id,
             ChapterSubCriteriaMap.is_primary == True
@@ -297,8 +427,16 @@ async def get_assessment_results(id: int, db: AsyncSession = Depends(get_db)):
         if not chap_map:
             chap_stmt = select(ChapterSubCriteriaMap).where(ChapterSubCriteriaMap.sub_criterion_id == r.sub_criterion_id)
             chap_map = (await db.execute(chap_stmt)).scalars().first()
-        
+
         chapter_name = chap_map.chapter_name if chap_map else "introduction"
+
+        effective = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
+        if sub_c:
+            if effective is None:
+                unscored += 1
+            else:
+                total_score += effective
+                max_possible += sub_c.max_marks
 
         out.append({
             "id": r.id,
@@ -307,6 +445,8 @@ async def get_assessment_results(id: int, db: AsyncSession = Depends(get_db)):
             "criterion_name": criterion.name if criterion else "",
             "max_marks": sub_c.max_marks if sub_c else 0.0,
             "ai_score": r.ai_score,
+            "scoring_failed": bool(r.scoring_failed),
+            "error_detail": r.error_detail,
             "ai_score_run_1": r.ai_score_run_1,
             "ai_score_run_2": r.ai_score_run_2,
             "score_consistency_flag": r.score_consistency_flag,
@@ -320,23 +460,40 @@ async def get_assessment_results(id: int, db: AsyncSession = Depends(get_db)):
             "chapter_name": chapter_name
         })
 
+    percentage = round((total_score / max_possible * 100), 1) if max_possible > 0 else None
+    band = grade_for(percentage)
+
     return {
         "status": sub.status,
         "submission_id": id,
         "student_name": sub.student_name,
         "degree_level": sub.degree_level,
+        "total_score": round(total_score, 1),
+        "max_possible": round(max_possible, 1),
+        "percentage": percentage,
+        "grade": band["grade"],
+        "grade_interpretation": band["interpretation"],
+        "is_referred": band["is_referred"],
+        "reassessment_cap": band["reassessment_cap"],
+        "unscored_criteria": unscored,
+        "error_detail": sub.error_detail,
         "results": out
     }
 
 
-
 @router.get("/submissions/{id}/results/by-chapter/{chapter_name}")
-async def get_results_by_chapter(id: int, chapter_name: str, db: AsyncSession = Depends(get_db)):
+async def get_results_by_chapter(
+    id: int,
+    chapter_name: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Fetch sub-criteria evaluation results mapped to a specific chapter."""
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
 
     map_stmt = select(ChapterSubCriteriaMap).where(ChapterSubCriteriaMap.chapter_name == chapter_name)
     ch_maps = (await db.execute(map_stmt)).scalars().all()
@@ -383,6 +540,8 @@ async def get_results_by_chapter(id: int, chapter_name: str, db: AsyncSession = 
                 "level_mid_desc": sub_c.level_mid_desc,
                 "level_high_desc": sub_c.level_high_desc,
                 "ai_score": r.ai_score,
+                "scoring_failed": bool(r.scoring_failed),
+                "error_detail": r.error_detail,
                 "ai_score_run_1": r.ai_score_run_1,
                 "ai_score_run_2": r.ai_score_run_2,
                 "score_consistency_flag": r.score_consistency_flag,
@@ -403,14 +562,21 @@ async def override_sub_criterion_score(
     id: int,
     sub_criterion_id: int,
     payload: OverrideScoreRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
 ):
     """Supervisor overrides the AI score for a specific sub-criterion."""
-    stmt = select(AssessmentResult).where(
+    stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
+    sub = (await db.execute(stmt)).scalars().first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
+
+    res_stmt = select(AssessmentResult).where(
         AssessmentResult.submission_id == id,
         AssessmentResult.sub_criterion_id == sub_criterion_id
     )
-    result_rec = (await db.execute(stmt)).scalars().first()
+    result_rec = (await db.execute(res_stmt)).scalars().first()
     if not result_rec:
         raise HTTPException(status_code=404, detail="Assessment result not found")
 
@@ -423,12 +589,17 @@ async def override_sub_criterion_score(
 
 
 @router.get("/submissions/{id}/report")
-async def get_narrative_report(id: int, db: AsyncSession = Depends(get_db)):
+async def get_narrative_report(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Fetch synthesized narrative report."""
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
 
     report_text = sub.narrative_report_edited or sub.narrative_report
     return {
@@ -439,12 +610,18 @@ async def get_narrative_report(id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/submissions/{id}/report")
-async def update_narrative_report(id: int, payload: NarrativeReportUpdate, db: AsyncSession = Depends(get_db)):
+async def update_narrative_report(
+    id: int,
+    payload: NarrativeReportUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Supervisor edits narrative report and saves final recommendation (Pass/Revise/Fail)."""
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
 
     sub.narrative_report_edited = payload.narrative_report_edited
     if payload.supervisor_recommendation:
@@ -455,34 +632,62 @@ async def update_narrative_report(id: int, payload: NarrativeReportUpdate, db: A
 
 
 @router.get("/submissions/{id}/export")
-async def export_submission_report_docx(id: int, db: AsyncSession = Depends(get_db)):
+async def export_submission_report_docx(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Generates and downloads a Word (.docx) thesis assessment report."""
     stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
     sub = (await db.execute(stmt)).scalars().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
 
     res_stmt = select(AssessmentResult).where(AssessmentResult.submission_id == id)
     results_recs = (await db.execute(res_stmt)).scalars().all()
 
     results_data = []
+    total_score = 0.0
+    max_possible = 0.0
+    rubric_source = None
     for r in results_recs:
         sub_c = (await db.execute(select(RubricSubCriterion).where(RubricSubCriterion.id == r.sub_criterion_id))).scalars().first()
         criterion = None
         if sub_c:
             criterion = (await db.execute(select(RubricCriterion).where(RubricCriterion.id == sub_c.criterion_id))).scalars().first()
+        if criterion and rubric_source is None:
+            rubric_source = criterion.source
+
+        effective = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
+        if sub_c and effective is not None:
+            total_score += effective
+            max_possible += sub_c.max_marks
+
         results_data.append({
             "criterion_name": criterion.name if criterion else "",
             "sub_criterion_name": sub_c.name if sub_c else "",
             "max_marks": sub_c.max_marks if sub_c else 0.0,
             "ai_score": r.ai_score,
             "supervisor_override_score": r.supervisor_override_score,
+            "effective_score": effective,
+            "scoring_failed": bool(r.scoring_failed),
             "cited_text": r.cited_text
         })
 
+    percentage = round((total_score / max_possible * 100), 1) if max_possible > 0 else None
+    summary = {
+        "total_score": round(total_score, 1),
+        "max_possible": round(max_possible, 1),
+        "percentage": percentage,
+        **grade_for(percentage),
+        "unscored_criteria": sum(1 for d in results_data if d["effective_score"] is None),
+        "rubric_source": rubric_source,
+    }
+
     narrative_text = sub.narrative_report_edited or sub.narrative_report or "No report generated yet."
 
-    docx_stream = generate_thesis_docx_report(sub, results_data, [], narrative_text)
+    docx_stream = generate_thesis_docx_report(sub, results_data, summary, narrative_text)
     clean_title = (sub.title or "thesis_report").replace(" ", "_")
 
     return StreamingResponse(
@@ -493,7 +698,11 @@ async def export_submission_report_docx(id: int, db: AsyncSession = Depends(get_
 
 
 @router.post("/graded-examples")
-async def create_graded_example(payload: GradedExampleCreate, db: AsyncSession = Depends(get_db)):
+async def create_graded_example(
+    payload: GradedExampleCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
     """Create human-graded exemplar excerpt for few-shot scorer retrieval."""
     ex_vec = generate_embedding(payload.excerpt)
 
@@ -507,3 +716,4 @@ async def create_graded_example(payload: GradedExampleCreate, db: AsyncSession =
     db.add(ex)
     await db.commit()
     return {"message": "Graded example created successfully"}
+

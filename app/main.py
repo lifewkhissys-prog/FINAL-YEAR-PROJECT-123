@@ -1,37 +1,43 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from app.database import Base, engine
-from app.seed import seed_database
+from app.config import settings
+from app.migrations import apply_migrations
+from app.seed import seed_database, repair_rubric_set, RUBRIC_SETS
 from app.utils.errors import register_error_handlers
-from app.routers import thesis
+from app.routers import thesis, auth, courses, assessments, problems, dashboard, submissions
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.SECRET_KEY == "devlabsecretkeychangeinproduction12345":
+        import os
+        if os.getenv("ENV", "development").lower() == "production":
+            raise RuntimeError("SECRET_KEY must be changed from the default value in production environment.")
+
     try:
         from app.database import init_pgvector
         await init_pgvector()
     except Exception as e:
         print(f"pgvector init warning: {e}")
-        
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        try:
-            await conn.execute(text("ALTER TABLE thesis_submissions ADD COLUMN pipeline_step VARCHAR(100)"))
-        except Exception:
-            pass
-        try:
-            await conn.execute(text("ALTER TABLE thesis_submissions ADD COLUMN pipeline_progress INTEGER"))
-        except Exception:
-            pass
-    
+
+    await apply_migrations()
+
     # Automatically seed official KNUST rubric data if database is empty
     try:
-        await seed_database()
+        outcome = await seed_database()
     except Exception as e:
         print(f"Database seed warning: {e}")
-        
+        outcome = None
+
+    # An already-populated database may hold a stale mark scheme (notably `phd`, which was once
+    # seeded with the MPhil rubric). Bring each level back in line with the Guide.
+    if outcome == "already_populated":
+        for level in RUBRIC_SETS:
+            try:
+                await repair_rubric_set(level)
+            except Exception as e:
+                print(f"Rubric repair warning for {level}: {e}")
+
     yield
 
 app = FastAPI(
@@ -40,10 +46,14 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Standard Starlette CORSMiddleware configuration
+# Standard Starlette CORSMiddleware configuration with explicit origin allowlist
+origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"]
+if hasattr(settings, "CORS_ORIGINS") and settings.CORS_ORIGINS:
+    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,8 +63,15 @@ app.add_middleware(
 register_error_handlers(app)
 
 # Include Routers
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(courses.router, prefix="/api/courses", tags=["Courses"])
+app.include_router(assessments.router, prefix="/api/assessments", tags=["Assessments"])
+app.include_router(problems.router, prefix="/api/problems", tags=["Problems"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
+app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions"])
 app.include_router(thesis.router)
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+

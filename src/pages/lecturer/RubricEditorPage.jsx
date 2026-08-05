@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import NavigationHeader from '../../components/NavigationHeader';
+import { authFetch } from '../../api/axiosInstance';
 
 export default function RubricEditorPage() {
   const [degreeLevel, setDegreeLevel] = useState('mphil');
@@ -23,7 +24,7 @@ export default function RubricEditorPage() {
   const loadCriteria = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/rubric/criteria?degree_level=${degreeLevel}`);
+      const res = await authFetch(`/api/rubric/criteria?degree_level=${degreeLevel}`);
       if (res.ok) {
         setCriteria(await res.json());
       }
@@ -53,7 +54,7 @@ export default function RubricEditorPage() {
   const handleSaveSub = async () => {
     if (!editingSub) return;
     try {
-      await fetch(`/api/rubric/sub-criteria/${editingSub.id}`, {
+      await authFetch(`/api/rubric/sub-criteria/${editingSub.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editForm)
@@ -68,7 +69,7 @@ export default function RubricEditorPage() {
   const handleAddExemplar = async () => {
     if (!exemplarModalSub) return;
     try {
-      await fetch('/api/graded-examples', {
+      await authFetch('/api/graded-examples', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
