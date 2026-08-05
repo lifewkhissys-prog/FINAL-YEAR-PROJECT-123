@@ -68,8 +68,8 @@ app.include_router(courses.router, prefix="/api/courses", tags=["Courses"])
 app.include_router(assessments.router, prefix="/api/assessments", tags=["Assessments"])
 app.include_router(problems.router, prefix="/api/problems", tags=["Problems"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
-app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions"])
 app.include_router(thesis.router)
+app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions"])
 
 @app.get("/health")
 def health_check():

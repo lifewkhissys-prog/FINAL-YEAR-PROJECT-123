@@ -217,6 +217,8 @@ async def list_submissions(
             "is_referred": band["is_referred"],
             "unscored_criteria": unscored,
             "error_detail": s.error_detail,
+            "pipeline_step": s.pipeline_step,
+            "pipeline_progress": s.pipeline_progress,
             "supervisor_recommendation": s.supervisor_recommendation
         })
     return out

@@ -8,24 +8,40 @@ export default function SupervisorDashboardPage() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadSubmissions() {
-      try {
-        const res = await authFetch('/api/submissions');
-        if (res.ok) {
-          setSubmissions(await res.json());
-        }
-      } catch (err) {
-        console.error("Error loading submissions:", err);
-      } finally {
-        setLoading(false);
+  async function loadSubmissions() {
+    try {
+      const res = await authFetch('/api/submissions');
+      if (res.ok) {
+        setSubmissions(await res.json());
       }
+    } catch (err) {
+      console.error("Error loading submissions:", err);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
     loadSubmissions();
   }, []);
 
+  // Auto-poll every 3 seconds while any thesis is actively processing
+  useEffect(() => {
+    const hasActiveProcessing = submissions.some(
+      s => s.status === 'pending' || s.status === 'assessing' || s.status === 'processing'
+    );
+
+    if (!hasActiveProcessing) return;
+
+    const timer = setInterval(() => {
+      loadSubmissions();
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [submissions]);
+
   const totalEvaluated = submissions.length;
-  const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'assessing').length;
+  const pendingCount = submissions.filter(s => s.status === 'pending' || s.status === 'assessing' || s.status === 'processing').length;
   const completedCount = submissions.filter(s => s.status === 'completed' || s.status === 'reviewed').length;
 
   return (
@@ -76,10 +92,12 @@ export default function SupervisorDashboardPage() {
           <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Pipeline Processing</span>
-              <span className="material-symbols-outlined text-amber-600 text-xl">sync</span>
+              <span className={`material-symbols-outlined text-xl ${pendingCount > 0 ? 'text-amber-600 animate-spin' : 'text-amber-600'}`}>sync</span>
             </div>
             <p className="text-3xl font-bold text-amber-700">{pendingCount}</p>
-            <p className="text-xs text-on-surface-variant mt-1">Active multi-agent pipeline runs</p>
+            <p className="text-xs text-on-surface-variant mt-1">
+              {pendingCount > 0 ? 'Active multi-agent pipeline runs (auto-refreshing)' : 'No active pipeline runs'}
+            </p>
           </div>
 
           <div className="bg-white p-6 rounded-xl border border-surface-container-highest shadow-sm">
@@ -108,7 +126,14 @@ export default function SupervisorDashboardPage() {
               <span className="material-symbols-outlined text-primary">article</span>
               <span>Recent Student Submissions</span>
             </h2>
-            <span className="text-xs text-on-surface-variant font-medium">Updated in real-time</span>
+            {pendingCount > 0 ? (
+              <span className="text-xs font-semibold text-amber-700 flex items-center gap-1.5 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                <span>Auto-refreshing active pipeline runs...</span>
+              </span>
+            ) : (
+              <span className="text-xs text-on-surface-variant font-medium">Updated in real-time</span>
+            )}
           </div>
 
           {loading ? (
@@ -135,107 +160,146 @@ export default function SupervisorDashboardPage() {
                     <th className="p-3">Gate Check</th>
                     <th className="p-3">Plagiarism</th>
                     <th className="p-3">Score</th>
-                    <th className="p-3">Status</th>
+                    <th className="p-3">Status & Pipeline Progress</th>
                     <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container">
-                  {submissions.map((sub) => (
-                    <tr key={sub.id} className="hover:bg-surface-container-low transition-colors">
-                      <td className="p-3">
-                        <p className="font-bold text-primary text-sm">{sub.student_name || 'Anonymous Student'}</p>
-                        <p className="text-on-surface-variant text-[11px] truncate max-w-xs">{sub.title}</p>
-                      </td>
+                  {submissions.map((sub) => {
+                    const isProcessing = sub.status === 'pending' || sub.status === 'assessing' || sub.status === 'processing';
+                    const progressPct = sub.pipeline_progress || (sub.status === 'completed' || sub.status === 'reviewed' ? 100 : 15);
 
-                      <td className="p-3">
-                        <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${
-                          sub.degree_level === 'undergraduate'
-                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                            : sub.degree_level === 'msc'
-                            ? 'bg-sky-50 text-sky-700 border-sky-200'
-                            : sub.degree_level === 'phd'
-                            ? 'bg-amber-50 text-amber-800 border-amber-200'
-                            : 'bg-purple-50 text-purple-700 border-purple-200'
-                        }`}>
-                          {sub.degree_level === 'undergraduate'
-                            ? 'BSc / Undergrad'
-                            : sub.degree_level === 'msc'
-                            ? 'MSc (Taught)'
-                            : sub.degree_level === 'phd'
-                            ? 'PhD (Doctoral)'
-                            : 'MPhil (Research)'}
-                        </span>
-                      </td>
+                    return (
+                      <tr key={sub.id} className="hover:bg-surface-container-low transition-colors">
+                        <td className="p-3">
+                          <p className="font-bold text-primary text-sm">{sub.student_name || 'Anonymous Student'}</p>
+                          <p className="text-on-surface-variant text-[11px] truncate max-w-xs">{sub.title}</p>
+                        </td>
 
-                      <td className="p-3">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                          sub.preliminary_check_passed !== false
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {sub.preliminary_check_passed !== false ? 'PASSED' : 'FAILED'}
-                        </span>
-                      </td>
+                        <td className="p-3">
+                          <span className={`px-2.5 py-1 rounded-md text-[11px] font-bold border ${
+                            sub.degree_level === 'undergraduate'
+                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                              : sub.degree_level === 'msc'
+                              ? 'bg-sky-50 text-sky-700 border-sky-200'
+                              : sub.degree_level === 'phd'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-purple-50 text-purple-700 border-purple-200'
+                          }`}>
+                            {sub.degree_level === 'undergraduate'
+                              ? 'BSc / Undergrad'
+                              : sub.degree_level === 'msc'
+                              ? 'MSc (Taught)'
+                              : sub.degree_level === 'phd'
+                              ? 'PhD (Doctoral)'
+                              : 'MPhil (Research)'}
+                          </span>
+                        </td>
 
-                      <td className="p-3 font-semibold text-primary">
-                        {sub.plagiarism_score !== null ? `${sub.plagiarism_score}%` : 'N/A'}
-                      </td>
+                        <td className="p-3">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            sub.preliminary_check_passed !== false
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {sub.preliminary_check_passed !== false ? 'PASSED' : 'FAILED'}
+                          </span>
+                        </td>
 
-                      <td className="p-3">
-                        {sub.percentage === null || sub.percentage === undefined ? (
-                          <span className="text-[11px] text-on-surface-variant">Not graded</span>
-                        ) : (
-                          <>
-                            <span className="font-bold text-primary text-sm">{sub.total_score} / {sub.max_possible}</span>
-                            <span className="text-[11px] text-on-surface-variant block">
-                              ({sub.percentage}%)
-                              {sub.grade && (
-                                <span className={`ml-1 font-bold ${
-                                  sub.grade === 'A' ? 'text-emerald-700'
-                                    : sub.grade === 'B' ? 'text-emerald-600'
-                                    : sub.grade === 'C' ? 'text-amber-700'
-                                    : sub.grade === 'E' ? 'text-orange-700'
-                                    : 'text-red-700'
-                                }`}>
-                                  {sub.grade} · {sub.grade_interpretation}
+                        <td className="p-3 font-semibold text-primary">
+                          {sub.plagiarism_score !== null ? `${sub.plagiarism_score}%` : 'N/A'}
+                        </td>
+
+                        <td className="p-3">
+                          {sub.percentage === null || sub.percentage === undefined ? (
+                            <span className="text-[11px] text-on-surface-variant">
+                              {isProcessing ? 'Calculating...' : 'Not graded'}
+                            </span>
+                          ) : (
+                            <>
+                              <span className="font-bold text-primary text-sm">{sub.total_score} / {sub.max_possible}</span>
+                              <span className="text-[11px] text-on-surface-variant block">
+                                ({sub.percentage}%)
+                                {sub.grade && (
+                                  <span className={`ml-1 font-bold ${
+                                    sub.grade === 'A' ? 'text-emerald-700'
+                                      : sub.grade === 'B' ? 'text-emerald-600'
+                                      : sub.grade === 'C' ? 'text-amber-700'
+                                      : sub.grade === 'E' ? 'text-orange-700'
+                                      : 'text-red-700'
+                                  }`}>
+                                    {sub.grade} · {sub.grade_interpretation}
+                                  </span>
+                                )}
+                              </span>
+                              {sub.unscored_criteria > 0 && (
+                                <span className="text-[10px] text-red-700 block">
+                                  {sub.unscored_criteria} criteri{sub.unscored_criteria === 1 ? 'on' : 'a'} not scored
                                 </span>
                               )}
+                            </>
+                          )}
+                        </td>
+
+                        <td className="p-3 max-w-xs">
+                          {isProcessing ? (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-3 h-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></span>
+                                <span className="font-bold text-amber-700 text-[11px]">
+                                  Assessing ({progressPct}%)
+                                </span>
+                              </div>
+                              <div className="w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className="bg-gradient-to-r from-amber-500 to-amber-600 h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.max(progressPct, 10)}%` }}
+                                ></div>
+                              </div>
+                              <p className="text-[10px] text-on-surface-variant truncate">
+                                {sub.pipeline_step || 'Executing multi-agent evaluation...'}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className={`px-2.5 py-0.5 font-semibold text-[11px] rounded-full capitalize ${
+                              sub.status === 'failed' || sub.status === 'preliminary_check_failed'
+                                ? 'bg-red-100 text-red-800'
+                                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`} title={sub.error_detail || ''}>
+                              {sub.status === 'preliminary_check_failed' ? 'not assessable' : sub.status}
                             </span>
-                            {sub.unscored_criteria > 0 && (
-                              <span className="text-[10px] text-red-700 block">
-                                {sub.unscored_criteria} criteri{sub.unscored_criteria === 1 ? 'on' : 'a'} not scored
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </td>
+                          )}
+                        </td>
 
-                      <td className="p-3">
-                        <span className={`px-2.5 py-0.5 font-semibold text-[11px] rounded-full capitalize ${
-                          sub.status === 'failed' || sub.status === 'preliminary_check_failed'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-surface-container text-primary'
-                        }`} title={sub.error_detail || ''}>
-                          {sub.status === 'preliminary_check_failed' ? 'not assessable' : sub.status}
-                        </span>
-                      </td>
-
-                      <td className="p-3 text-right space-x-2">
-                        <button
-                          onClick={() => navigate(`/thesis/submission/${sub.id}/scoring`)}
-                          className="px-3 py-1 bg-surface-container-low border border-outline-variant text-primary text-[11px] font-semibold rounded hover:bg-surface-container transition-colors"
-                        >
-                          Score
-                        </button>
-                        <button
-                          onClick={() => navigate(`/thesis/submission/${sub.id}/report`)}
-                          className="px-3 py-1 bg-primary text-white text-[11px] font-semibold rounded hover:bg-primary-container transition-colors"
-                        >
-                          Report
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        <td className="p-3 text-right space-x-2">
+                          {isProcessing ? (
+                            <button
+                              onClick={() => navigate(`/thesis/submission/${sub.id}/structure`)}
+                              className="px-3 py-1 bg-amber-600 text-white text-[11px] font-semibold rounded hover:bg-amber-700 transition-colors shadow-sm animate-pulse flex items-center gap-1 inline-flex"
+                            >
+                              <span className="material-symbols-outlined text-[12px]">visibility</span>
+                              <span>Live Progress</span>
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => navigate(`/thesis/submission/${sub.id}/scoring`)}
+                                className="px-3 py-1 bg-surface-container-low border border-outline-variant text-primary text-[11px] font-semibold rounded hover:bg-surface-container transition-colors"
+                              >
+                                Score
+                              </button>
+                              <button
+                                onClick={() => navigate(`/thesis/submission/${sub.id}/report`)}
+                                className="px-3 py-1 bg-primary text-white text-[11px] font-semibold rounded hover:bg-primary-container transition-colors"
+                              >
+                                Report
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
