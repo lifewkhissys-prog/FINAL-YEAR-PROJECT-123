@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
-import { authFetch } from '../../api/axiosInstance';
+import { authFetch, safeJson } from '../../api/axiosInstance';
 
 const CHAPTERS = [
   { key: 'introduction', label: 'Introduction', icon: 'info' },
@@ -61,21 +61,20 @@ export default function CriterionScoringPage() {
       try {
         const res = await authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
         if (res.ok) {
-          const data = await res.json();
-          setResults(data);
-          // Initialize overrides
-          const overrides = {};
-          data.forEach(item => {
-            // Leave an unscored sub-criterion blank rather than seeding the input with 0, which a
-            // supervisor could save as a real mark of zero without noticing.
-            const v = item.supervisor_override_score !== null && item.supervisor_override_score !== undefined
-              ? item.supervisor_override_score
-              : item.ai_score;
-            if (v !== null && v !== undefined) {
-              overrides[item.sub_criterion_id] = v;
-            }
-          });
-          setOverrideScores(overrides);
+          const data = await safeJson(res);
+          if (data) {
+            setResults(data);
+            const overrides = {};
+            data.forEach(item => {
+              const v = item.supervisor_override_score !== null && item.supervisor_override_score !== undefined
+                ? item.supervisor_override_score
+                : item.ai_score;
+              if (v !== null && v !== undefined) {
+                overrides[item.sub_criterion_id] = v;
+              }
+            });
+            setOverrideScores(overrides);
+          }
         }
       } catch (err) {
         console.error("Error loading chapter results:", err);
@@ -104,9 +103,11 @@ export default function CriterionScoringPage() {
           supervisor_notes: 'Supervisor adjusted score based on evidence review.'
         })
       });
-      // Refresh
       const res = await authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
-      if (res.ok) setResults(await res.json());
+      if (res.ok) {
+        const data = await safeJson(res);
+        if (data) setResults(data);
+      }
     } catch (err) {
       console.error("Error saving score override:", err);
     }

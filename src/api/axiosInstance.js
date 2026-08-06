@@ -25,5 +25,17 @@ export async function authFetch(url, options = {}) {
   return await fetch(url, { ...options, headers });
 }
 
+export async function safeJson(res) {
+  if (!res) return null;
+  try {
+    const text = await res.text();
+    if (!text || !text.trim()) return null;
+    return JSON.parse(text);
+  } catch (e) {
+    console.warn("safeJson: Failed to parse response as JSON:", e);
+    return null;
+  }
+}
+
 export default api;
 

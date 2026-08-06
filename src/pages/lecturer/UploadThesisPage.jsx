@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
-import { authFetch } from '../../api/axiosInstance';
+import { authFetch, safeJson } from '../../api/axiosInstance';
 
 export default function UploadThesisPage() {
   const navigate = useNavigate();
@@ -45,11 +45,14 @@ export default function UploadThesisPage() {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.detail || 'Upload failed');
+        const errData = await safeJson(res);
+        throw new Error(errData?.detail || 'Upload failed');
       }
 
-      const data = await res.json();
+      const data = await safeJson(res);
+      if (!data || !data.id) {
+        throw new Error('Upload response did not return a valid submission ID.');
+      }
       const submissionId = data.id;
 
       // Trigger background agent pipeline

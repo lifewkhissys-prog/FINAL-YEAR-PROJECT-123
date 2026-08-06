@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import NavigationHeader from '../../components/NavigationHeader';
-import { authFetch } from '../../api/axiosInstance';
+import { authFetch, safeJson } from '../../api/axiosInstance';
 
 export default function RubricEditorPage() {
   const [degreeLevel, setDegreeLevel] = useState('mphil');
@@ -26,7 +26,8 @@ export default function RubricEditorPage() {
     try {
       const res = await authFetch(`/api/rubric/criteria?degree_level=${degreeLevel}`);
       if (res.ok) {
-        setCriteria(await res.json());
+        const data = await safeJson(res);
+        if (data) setCriteria(data);
       }
     } catch (err) {
       console.error("Error loading rubric criteria:", err);

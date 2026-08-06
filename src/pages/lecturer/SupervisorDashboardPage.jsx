@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
-import { authFetch } from '../../api/axiosInstance';
+import { authFetch, safeJson } from '../../api/axiosInstance';
 
 export default function SupervisorDashboardPage() {
   const navigate = useNavigate();
@@ -12,7 +12,8 @@ export default function SupervisorDashboardPage() {
     try {
       const res = await authFetch('/api/submissions');
       if (res.ok) {
-        setSubmissions(await res.json());
+        const data = await safeJson(res);
+        if (data) setSubmissions(data);
       }
     } catch (err) {
       console.error("Error loading submissions:", err);

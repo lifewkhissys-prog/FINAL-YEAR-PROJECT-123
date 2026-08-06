@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
-import { authFetch } from '../../api/axiosInstance';
+import { authFetch, safeJson } from '../../api/axiosInstance';
 
 export default function FinalNarrativeReportPage() {
   const { id } = useParams();
@@ -19,10 +19,12 @@ export default function FinalNarrativeReportPage() {
       try {
         const res = await authFetch(`/api/submissions/${id}/report`);
         if (res.ok) {
-          const data = await res.json();
-          setReportText(data.narrative_report_edited || data.narrative_report || '');
-          if (data.supervisor_recommendation) {
-            setRecommendation(data.supervisor_recommendation);
+          const data = await safeJson(res);
+          if (data) {
+            setReportText(data.narrative_report_edited || data.narrative_report || '');
+            if (data.supervisor_recommendation) {
+              setRecommendation(data.supervisor_recommendation);
+            }
           }
         }
       } catch (err) {

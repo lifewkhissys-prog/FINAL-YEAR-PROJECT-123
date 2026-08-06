@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
-import { authFetch } from '../../api/axiosInstance';
+import { authFetch, safeJson } from '../../api/axiosInstance';
 
 const PIPELINE_STEPS = [
   { key: 'structural_extraction', label: 'Document Extraction', desc: 'Reading document structure & figures' },
@@ -75,12 +75,18 @@ export default function StructureMappingPage() {
         authFetch(`/api/submissions/${id}/plagiarism`)
       ]);
 
-      if (prelimRes.ok) setPrelimCheck(await prelimRes.json());
-      if (flowRes.ok) {
-        const fData = await flowRes.json();
-        setFlowTable(fData.flow_analysis_table || '');
+      if (prelimRes.ok) {
+        const data = await safeJson(prelimRes);
+        if (data) setPrelimCheck(data);
       }
-      if (plagRes.ok) setPlagiarismData(await plagRes.json());
+      if (flowRes.ok) {
+        const fData = await safeJson(flowRes);
+        if (fData) setFlowTable(fData.flow_analysis_table || '');
+      }
+      if (plagRes.ok) {
+        const pData = await safeJson(plagRes);
+        if (pData) setPlagiarismData(pData);
+      }
     } catch (err) {
       console.error("Error loading structure mapping data:", err);
     } finally {
