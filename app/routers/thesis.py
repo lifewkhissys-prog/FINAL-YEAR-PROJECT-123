@@ -78,13 +78,19 @@ async def get_rubric_criteria(
     """List rubric criteria with nested sub-criteria."""
     stmt = (
         select(RubricCriterion)
-        .where(RubricCriterion.degree_level == degree_level)
+        .where(
+            RubricCriterion.degree_level == degree_level,
+            RubricCriterion.deprecated_at.is_(None)
+        )
     )
     criteria = (await db.execute(stmt)).scalars().all()
 
     output = []
     for c in criteria:
-        sub_stmt = select(RubricSubCriterion).where(RubricSubCriterion.criterion_id == c.id)
+        sub_stmt = select(RubricSubCriterion).where(
+            RubricSubCriterion.criterion_id == c.id,
+            RubricSubCriterion.deprecated_at.is_(None)
+        )
         sub_crits = (await db.execute(sub_stmt)).scalars().all()
         output.append({
             "id": c.id,
