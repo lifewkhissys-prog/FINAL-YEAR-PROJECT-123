@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.migrations import apply_migrations
-from app.seed import seed_database, repair_rubric_set, RUBRIC_SETS
+from app.seed import seed_database, RUBRIC_SETS
 from app.utils.errors import register_error_handlers
 from app.routers import thesis, auth, courses, assessments, problems, dashboard, submissions
 
@@ -22,21 +22,11 @@ async def lifespan(app: FastAPI):
 
     await apply_migrations()
 
-    # Automatically seed official KNUST rubric data if database is empty
+    # Automatically seed official KNUST rubric data
     try:
-        outcome = await seed_database()
+        await seed_database()
     except Exception as e:
         print(f"Database seed warning: {e}")
-        outcome = None
-
-    # An already-populated database may hold a stale mark scheme (notably `phd`, which was once
-    # seeded with the MPhil rubric). Bring each level back in line with the Guide.
-    if outcome == "already_populated":
-        for level in RUBRIC_SETS:
-            try:
-                await repair_rubric_set(level)
-            except Exception as e:
-                print(f"Rubric repair warning for {level}: {e}")
 
     yield
 
