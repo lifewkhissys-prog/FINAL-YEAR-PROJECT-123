@@ -126,9 +126,9 @@ async def call_llm_async(
 
         except Exception as e:
             err_str = str(e).lower()
-            if ("429" in err_str or "rate limit" in err_str) and attempt < retries - 1:
-                wait_time = (attempt + 1) * 3.0
-                logger.warning("Groq rate limit hit (attempt %s/%s). Waiting %ss.", attempt + 1, retries, wait_time)
+            if ("429" in err_str or "413" in err_str or "rate limit" in err_str or "rate_limit" in err_str or "tokens" in err_str) and attempt < retries - 1:
+                wait_time = (attempt + 1) * 4.0
+                logger.warning("Groq rate/token limit hit (attempt %s/%s). Waiting %ss.", attempt + 1, retries, wait_time)
                 await asyncio.sleep(wait_time)
             else:
                 logger.error("Groq API execution error: %s", e)
@@ -411,23 +411,30 @@ async def run_scoring(
     # judgement-shaped, extraction is retrieval-shaped), but v1 uses the same
     # model for both via GROQ_SCORER_MODEL for velocity.
 
-    evidence_summary = json.dumps(all_evidence, indent=2)
+    # Compact evidence summary to stay well within Groq 6000 TPM limit
+    evidence_payload = []
+    for ev in all_evidence:
+        quotes = [q[:180] for q in ev.get("quotes", [])[:2]]
+        evidence_payload.append({
+            "sub_criterion_id": ev.get("sub_criterion_id"),
+            "target": ev.get("chapter_target"),
+            "quotes": quotes,
+            "gap": (ev.get("gap_description") or "")[:200]
+        })
+    evidence_summary = json.dumps(evidence_payload, separators=(',', ':'))
 
     sc_payload = []
     for sc in sub_criteria:
         parent_crit = criteria_map.get(sc.criterion_id)
         sc_payload.append({
             "sub_criterion_id": sc.id,
-            "criterion_name": parent_crit.name if parent_crit else "Criterion",
             "name": sc.name,
             "max_marks": sc.max_marks,
-            "chapter_target": sc.chapter_target,
-            "low": sc.level_low_desc,
-            "mid": sc.level_mid_desc,
-            "high": sc.level_high_desc
+            "target": sc.chapter_target,
+            "high": (sc.level_high_desc or "")[:120]
         })
 
-    sc_summary = json.dumps(sc_payload, indent=2)
+    sc_summary = json.dumps(sc_payload, separators=(',', ':'))
 
     prompt = f"""You are a senior academic thesis examiner assigning marks for a {degree_level.upper()} thesis.
 All evidence has been pre-gathered from the thesis text by chapter extraction tools.
@@ -557,9 +564,35 @@ async def run_narrative_synthesis(
     }
     rubric_source = rubric_source_map.get(degree_level, "KNUST Standard Rubric")
 
-    evidence_json = json.dumps(all_evidence, indent=2)
-    scores_json = json.dumps(scoring_results, indent=2)
-    findings_json = json.dumps(doc_structure.get("findings", []), indent=2)
+    ev_lines = []
+    for ev in all_evidence:
+        ch = str(ev.get("chapter_target", "general")).upper()
+        sc_id = ev.get("sub_criterion_id")
+        quotes = ev.get("quotes", [])
+        quote_text = " | ".join(f'"{q[:220]}"' for q in quotes[:2]) if quotes else ""
+        gap = (ev.get("gap_description") or "")[:250]
+        line = f"• [{ch}] Sub-Criterion #{sc_id}:"
+        if quote_text:
+            line += f" Evidence Quotes: {quote_text}."
+        if gap:
+            line += f" Gap/Defect: {gap}."
+        ev_lines.append(line)
+    evidence_text = "\n".join(ev_lines) if ev_lines else "No specific quotes or gaps logged."
+
+    score_lines = []
+    for r in scoring_results:
+        sc_id = r.get("sub_criterion_id")
+        sc_name = r.get("sub_crit_name") or f"Sub-Criterion {sc_id}"
+        ai_score = r.get("ai_score", 0.0)
+        max_m = r.get("max_marks", 0.0)
+        just = (r.get("ai_justification") or "")[:200]
+        score_lines.append(f"• #{sc_id} ({sc_name}): {ai_score}/{max_m} — {just}")
+    scores_text = "\n".join(score_lines) if score_lines else "No sub-criteria scored."
+
+    findings = doc_structure.get("findings", [])
+    findings_text = "\n".join(f"• {f}" for f in findings[:10]) if findings else "No mechanical compliance issues flagged."
+
+    flow_summary = (flow_table or "Flow matrix not generated.")[:1500]
 
     prompt = f"""You are an authoritative academic examiner writing a Comprehensive Thesis Evaluation Report for a supervisor.
 
@@ -571,16 +604,16 @@ Structure Option: {doc_structure.get('metadata', {}).get('structure_option', 'mo
 Computed Score: {mark_summary}
 
 GATHERED EVIDENCE FROM CHAPTERS:
-{evidence_json}
+{evidence_text}
 
 SCORES AND JUSTIFICATIONS:
-{scores_json}
+{scores_text}
 
 MECHANICAL FINDINGS:
-{findings_json}
+{findings_text}
 
 FLOW MATRIX:
-{flow_table}
+{flow_summary}
 
 STRICT CONSTRAINTS (CRITICAL):
 1. You may NOT state a weakness or defect unless it explicitly appears as a gap_description in the evidence or findings above.
@@ -842,6 +875,7 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
             submission.pipeline_progress = 75
             await db.commit()
 
+            await asyncio.sleep(2.0)
             scoring_results = await run_scoring(all_evidence, sub_criteria, criteria_map, degree_level)
 
             for r in scoring_results:
