@@ -23,6 +23,9 @@ ADDED_COLUMNS = [
     ("assessment_results", "scoring_failed", "BOOLEAN"),
     ("assessment_results", "error_detail", "TEXT"),
     ("rubric_criteria", "assessment_type", "VARCHAR(20) DEFAULT 'thesis'"),
+    ("rubric_criteria", "deprecated_at", "TIMESTAMP"),
+    ("rubric_sub_criteria", "chapter_target", "VARCHAR(100)"),
+    ("rubric_sub_criteria", "deprecated_at", "TIMESTAMP"),
 ]
 
 # Columns that must accept NULL so an unscored sub-criterion can be stored as unscored instead of

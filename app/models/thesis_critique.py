@@ -32,6 +32,7 @@ class RubricCriterion(Base):
     description:     Mapped[str]          = mapped_column(Text, nullable=False)
     max_marks:       Mapped[float]        = mapped_column(Float, nullable=False)
     source:          Mapped[str | None]   = mapped_column(String(255), nullable=True)
+    deprecated_at:   Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     embedding                             = mapped_column(VectorType, nullable=True)
     created_at:      Mapped[datetime]     = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -50,6 +51,8 @@ class RubricSubCriterion(Base):
     level_low_desc:  Mapped[str]        = mapped_column(Text, nullable=False)
     level_mid_desc:  Mapped[str]        = mapped_column(Text, nullable=False)
     level_high_desc: Mapped[str]        = mapped_column(Text, nullable=False)
+    chapter_target:  Mapped[str | None] = mapped_column(String(100), nullable=True)
+    deprecated_at:   Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     embedding                           = mapped_column(VectorType, nullable=True)
     created_at:      Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
 

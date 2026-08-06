@@ -4,20 +4,28 @@ import NavigationHeader from '../../components/NavigationHeader';
 import { authFetch } from '../../api/axiosInstance';
 
 const PIPELINE_STEPS = [
-  { key: 'preliminary_check', label: 'Section Readiness', desc: 'Verifying core chapters & objectives' },
+  { key: 'structural_extraction', label: 'Document Extraction', desc: 'Reading document structure & figures' },
+  { key: 'rubric_loading', label: 'Rubric Preparation', desc: 'Loading degree-level rubric rules' },
+  { key: 'preliminary_check', label: 'Readiness Gate', desc: 'Verifying core chapters & constraints' },
   { key: 'flow_analysis', label: 'Flow Matrix', desc: 'Extracting alignment & scope matrix' },
   { key: 'plagiarism_scan', label: 'Similarity Scan', desc: 'Running section similarity check' },
-  { key: 'rubric_scoring', label: 'Rubric Evaluation', desc: 'Scorer & Verifier Agents scoring' },
-  { key: 'narrative_synthesis', label: 'Synthesis Draft', desc: 'Drafting 8-part supervisor report' },
+  { key: 'evidence_gathering', label: 'Evidence Extraction', desc: 'Auditing chapters for verbatim evidence' },
+  { key: 'scoring', label: 'Calibrated Scoring', desc: 'Scoring whole document in single pass' },
+  { key: 'narrative_synthesis', label: 'Report Synthesis', desc: 'Drafting 8-part supervisor report' },
+  { key: 'self_check', label: 'Quality Verification', desc: 'Running self-check audit pass' },
 ];
 
 function getStepIndex(stepKey) {
-  if (!stepKey || stepKey === 'preliminary_check') return 0;
-  if (stepKey === 'flow_analysis') return 1;
-  if (stepKey === 'plagiarism_scan') return 2;
-  if (stepKey === 'rubric_scoring') return 3;
-  if (stepKey === 'narrative_synthesis') return 4;
-  if (stepKey === 'completed') return 5;
+  if (!stepKey || stepKey === 'structural_extraction') return 0;
+  if (stepKey === 'rubric_loading') return 1;
+  if (stepKey === 'preliminary_check') return 2;
+  if (stepKey === 'flow_analysis') return 3;
+  if (stepKey === 'plagiarism_scan') return 4;
+  if (stepKey === 'evidence_gathering') return 5;
+  if (stepKey === 'scoring') return 6;
+  if (stepKey === 'narrative_synthesis') return 7;
+  if (stepKey === 'self_check') return 8;
+  if (stepKey === 'completed') return 9;
   return 0;
 }
 

@@ -257,7 +257,19 @@ export default function SupervisorDashboardPage() {
                                 ></div>
                               </div>
                               <p className="text-[10px] text-on-surface-variant truncate">
-                                {sub.pipeline_step || 'Executing multi-agent evaluation...'}
+                                {
+                                  {
+                                    structural_extraction: 'Reading document structure...',
+                                    rubric_loading: 'Loading rubric...',
+                                    preliminary_check: 'Checking compliance...',
+                                    flow_analysis: 'Extracting flow matrix...',
+                                    plagiarism_scan: 'Scanning for similarity...',
+                                    evidence_gathering: 'Auditing chapter evidence...',
+                                    scoring: 'Scoring against rubric...',
+                                    narrative_synthesis: 'Writing assessment report...',
+                                    self_check: 'Running quality check pass...'
+                                  }[sub.pipeline_step] || sub.pipeline_step || 'Executing evaluation...'
+                                }
                               </p>
                             </div>
                           ) : (

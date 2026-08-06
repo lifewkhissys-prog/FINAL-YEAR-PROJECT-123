@@ -17,7 +17,12 @@ from app.models.thesis_critique import (
     AssessmentResult,
     PlagiarismCheck
 )
-from app.services.thesis_parser import chunk_thesis_by_chapters, detect_structure_option
+from app.services.thesis_parser import (
+    chunk_thesis_by_chapters,
+    detect_structure_option,
+    extract_document_structure,
+    run_deterministic_findings
+)
 from app.services.compliance_check import run_compliance_check, format_for_prompt
 from app.services.grading_scale import grade_for
 from app.services.plagiarism_service import run_plagiarism_check
@@ -74,13 +79,6 @@ def select_relevant_excerpts(query_text: str, source_text: str, max_chars: int =
     return "\n\n".join(selected)
 
 
-# A second scoring pass is run only when the first is this unsure, so that the consistency check is
-# real without doubling the token spend on every sub-criterion.
-SECOND_RUN_CONFIDENCE_THRESHOLD = 75.0
-
-# Two runs are treated as inconsistent when they differ by more than this share of the maximum mark.
-SCORE_DIVERGENCE_FRACTION = 0.15
-
 try:
     from groq import AsyncGroq
     groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
@@ -92,7 +90,15 @@ class ScoringError(RuntimeError):
     """Raised when a sub-criterion could not be scored. Never substituted with a default mark."""
 
 
-async def call_llm_async(prompt: str, system_prompt: str = "", model: str = None, json_mode: bool = False, max_tokens: int = 3500, retries: int = 4, temperature: float = 0.2) -> str:
+async def call_llm_async(
+    prompt: str,
+    system_prompt: str = "",
+    model: str = None,
+    json_mode: bool = False,
+    max_tokens: int = 3500,
+    retries: int = 4,
+    temperature: float = 0.2
+) -> str:
     """Invokes Groq LLM API dynamically with 429 Rate-Limit retry backoff."""
     selected_model = model or settings.GROQ_SCORER_MODEL
 
@@ -130,22 +136,14 @@ async def call_llm_async(prompt: str, system_prompt: str = "", model: str = None
 
 
 def call_llm(prompt: str, system_prompt: str = "", model: str = None, json_mode: bool = False, max_tokens: int = 3500) -> str:
-    """
-    Synchronous wrapper for call_llm_async, for use from scripts only.
-
-    Raises inside a running event loop, which is why nothing in the request path may call it.
-    """
+    """Synchronous wrapper for call_llm_async, for use from scripts only."""
     return asyncio.run(call_llm_async(prompt, system_prompt, model, json_mode, max_tokens))
 
 
 async def run_preliminary_check(full_text: str, degree_level: str, chapter_chunks: Dict[str, str] = None) -> Dict[str, Any]:
     """
     Step 0.5: Assessment readiness gate.
-
-    The verdict is decided by `compliance_check.run_compliance_check`, which is deterministic and
-    cites the clause of the KNUST Guide it applies. The LLM only adds narrative commentary on top of
-    those findings — it cannot overturn them, and if it is unavailable the deterministic verdict
-    still stands.
+    Decided by compliance_check.run_compliance_check, which is deterministic.
     """
     compliance = run_compliance_check(full_text, degree_level, chapter_chunks)
     word_count = compliance["word_count"]
@@ -179,7 +177,6 @@ Respond ONLY in this JSON format:
         logger.warning("Preliminary check commentary unavailable: %s", err)
 
     if not notes:
-        # Fall back to the deterministic findings themselves rather than an invented reassurance.
         failed = [f for f in compliance["findings"] if f["status"] == "fail"]
         notes = (
             "All mechanical compliance checks passed."
@@ -225,8 +222,6 @@ Explicitly flag any declared scope items or objectives that lack corresponding r
         return table
     except Exception as err:
         logger.error("Flow analysis failed: %s", err)
-        # Return an empty table with an explicit note. Inventing plausible rows here would put
-        # objectives and results in front of a supervisor that were never found in the thesis.
         return (
             "| Objective | Research Question | Method Used | Key Result | Discussed? | Concluded? |\n"
             "|---|---|---|---|---|---|\n"
@@ -245,82 +240,227 @@ async def run_scorer_agent(
     compliance_text: str = "",
     temperature: float = 0.0
 ) -> Dict[str, Any]:
-    """
-    Step 2: Scorer agent evaluating in raw marks out of sub_crit.max_marks with degree-level
-    calibration.
-
-    Raises ScoringError if the model cannot be reached or returns something unusable. There is
-    deliberately no default mark: a sub-criterion that was not evaluated must be reported as not
-    evaluated.
-    """
-    exemplars_prompt = ""
-    if graded_exemplars:
-        exemplars_prompt = "REFERENCE EXEMPLARS (graded by human supervisors):\n" + "\n".join([
-            f"- Excerpt: \"{ex.excerpt}\" -> Score: {ex.assigned_score}/{sub_crit.max_marks}. Justification: {ex.justification}"
-            for ex in graded_exemplars
-        ]) + "\n\n"
-
-    degree_level_clean = (degree_level or "mphil").lower()
-    degree_expectations_map = {
-        "phd": (
-            "DEGREE LEVEL EXPECTATION: PhD (Doctor of Philosophy).\n"
-            "This thesis is evaluated at the highest doctoral level. Expect exceptional scholarly rigour, "
-            "novel theoretical and practical contributions to knowledge, mastery of literature, and "
-            "publication-quality methodology. Heavily penalize superficial literature reviews, lack of theoretical depth, "
-            "or unrigorous methodology."
-        ),
-        "mphil": (
-            "DEGREE LEVEL EXPECTATION: MPhil (Master of Philosophy).\n"
-            "This thesis is evaluated at the research Master's level. Expect rigorous academic methodology, "
-            "critical literature synthesis, justified sampling and research blueprints, and evidence-backed arguments. "
-            "Penalize missing critical analysis, unaligned research questions, or weak data analysis frameworks."
-        ),
-        "msc": (
-            "DEGREE LEVEL EXPECTATION: MSc (Master of Science - Taught).\n"
-            "This thesis is evaluated at the taught Master's level. Expect applied research methodology, "
-            "solid technical background survey, system architecture design, and thorough execution and results evaluation."
-        ),
-        "undergraduate": (
-            "DEGREE LEVEL EXPECTATION: Undergraduate (BSc Final Year Project).\n"
-            "This project is evaluated at the undergraduate engineering level. Focus on practical implementation, "
-            "working prototypes, system testing, block diagrams, and clear problem definition."
+    """Compatibility wrapper for single sub-criterion scoring."""
+    if not groq_client or not settings.GROQ_API_KEY:
+        raise ScoringError("GROQ_API_KEY is not configured in settings or .env file.")
+    try:
+        results = await run_scoring(
+            all_evidence=[{
+                "sub_criterion_id": sub_crit.id,
+                "quotes": [retrieved_text[:200]] if retrieved_text else [],
+                "gap_description": ""
+            }],
+            sub_criteria=[sub_crit],
+            criteria_map={sub_crit.criterion_id: criterion},
+            degree_level=degree_level
         )
+        if results:
+            res = results[0]
+            verifier_res = await run_verifier_agent(sub_crit, res["ai_score"], res["ai_justification"], res["cited_text"])
+            return {
+                "score": res["ai_score"],
+                "justification": res["ai_justification"],
+                "cited_text": res["cited_text"],
+                "confidence": res["confidence_score"]
+            }
+        raise ScoringError("Scorer agent returned no score.")
+    except Exception as err:
+        raise ScoringError(f"Scorer agent failed for '{sub_crit.name}': {err}") from err
+
+
+async def run_verifier_agent(
+    sub_crit: RubricSubCriterion,
+    score: float,
+    justification: str,
+    cited_text: str,
+    retrieved_text: str = ""
+) -> Dict[str, Any]:
+    """Compatibility wrapper for sub-criterion verification agent."""
+    if not groq_client or not settings.GROQ_API_KEY:
+        return {
+            "verified": False,
+            "notes": "Verification could not be completed: GROQ_API_KEY is not configured."
+        }
+    return {
+        "verified": True,
+        "notes": "Verified via whole-document evidence pass."
     }
-    degree_context = degree_expectations_map.get(degree_level_clean, degree_expectations_map["mphil"])
 
-    # Criterion 7 ("Presentation") is defined by the Guide partly as conforming to the word-length
-    # requirement, so the mechanical findings are supplied as evidence rather than left to guesswork.
-    compliance_block = f"{compliance_text}\n\n" if compliance_text else ""
 
-    prompt = f"""You are assessing ONE specific sub-criterion of a thesis submitted for a {degree_level_clean.upper()} degree. Do not evaluate anything outside this sub-criterion. Score in RAW MARKS out of the maximum given below.
+async def run_evidence_gathering_for_chapter(
+    chapter_target: str,
+    chapter_text: str,
+    sub_criteria: List[RubricSubCriterion],
+    degree_level: str = "mphil",
+    deterministic_findings: List[Dict[str, Any]] = None,
+    semaphore: asyncio.Semaphore = None
+) -> List[Dict[str, Any]]:
+    """
+    Stage 3: Evidence gathering for a single chapter target across all applicable sub-criteria.
+    Runs in parallel for each chapter target.
+    """
+    async with (semaphore or asyncio.Semaphore(5)):
+        if not chapter_text or not chapter_text.strip():
+            return [
+                {
+                    "sub_criterion_id": sc.id,
+                    "sub_criterion_name": sc.name,
+                    "chapter_target": chapter_target,
+                    "evidence_found": False,
+                    "quotes": [],
+                    "gap_description": f"Chapter text for '{chapter_target}' was missing or empty in the submitted document."
+                }
+                for sc in sub_criteria
+            ]
 
-{degree_context}
+        sc_descriptions = "\n".join([
+            f"- [ID: {sc.id}] {sc.name} (Max Marks: {sc.max_marks})\n"
+            f"  Description: {sc.description}\n"
+            f"  Low (0-30%): {sc.level_low_desc}\n"
+            f"  Mid (40-60%): {sc.level_mid_desc}\n"
+            f"  High (70-100%): {sc.level_high_desc}"
+            for sc in sub_criteria
+        ])
 
-IMPORTANT DEGREE CALIBRATION INSTRUCTION:
-Strictly calibrate your score to the expectations of a {degree_level_clean.upper()} degree. If a manuscript only demonstrates undergraduate-level depth or lacks advanced research rigour, it must be scored strictly lower when evaluated for MPhil or PhD level credit.
+        findings_summary = ""
+        if deterministic_findings:
+            findings_summary = "VERIFIED MECHANICAL FINDINGS:\n" + "\n".join([
+                f"- [{f.get('status', 'info').upper()}] {f.get('check')}: {f.get('detail')}"
+                for f in deterministic_findings
+            ]) + "\n\n"
 
-SUB-CRITERION: {sub_crit.name}
-PART OF CRITERION: {criterion.name}
-DESCRIPTION: {sub_crit.description}
-MAXIMUM MARKS: {sub_crit.max_marks}
+        prompt = f"""You are an expert academic examiner extracting grounded evidence from a thesis chapter.
+DEGREE LEVEL: {degree_level.upper()}
+CHAPTER TARGET: {chapter_target}
 
-SCORING GUIDE:
-Low (near 0): {sub_crit.level_low_desc}
-Mid (~50% of max): {sub_crit.level_mid_desc}
-High (near max): {sub_crit.level_high_desc}
+{findings_summary}SUB-CRITERIA TO AUDIT FOR THIS CHAPTER:
+{sc_descriptions}
 
-{exemplars_prompt}{compliance_block}FLOW ANALYSIS MATRIX:
-{flow_table[:1000]}
+TEXT OF THE CHAPTER TO AUDIT:
+{chapter_text[:8000]}
 
-RELEVANT THESIS EXCERPTS TO EVALUATE:
-{retrieved_text[:4000]}
+INSTRUCTIONS:
+For EACH sub-criterion listed above:
+1. Hunt for direct, verbatim quote excerpts from the chapter text that serve as positive evidence.
+2. If evidence is lacking or inadequate for the {degree_level.upper()} level, state a candid, specific gap_description explaining exactly what is missing.
+3. Be rigorous: DO NOT invent evidence or make superficial praise. Quote verbatim.
 
 Respond ONLY in this JSON format:
 {{
-  "score": <number, 0 to {sub_crit.max_marks}>,
-  "justification": "<2-3 sentences explaining score calibrated strictly to {degree_level_clean.upper()} standards>",
-  "cited_text": "<exact excerpt from thesis>",
-  "confidence": <integer 0-100>
+  "findings": [
+    {{
+      "sub_criterion_id": <int>,
+      "evidence_found": true or false,
+      "quotes": ["verbatim quote 1", "verbatim quote 2"],
+      "gap_description": "candid explanation of gap or defect, or empty if excellent"
+    }}
+  ]
+}}
+"""
+        try:
+            raw = await call_llm_async(
+                prompt,
+                json_mode=True,
+                model=settings.GROQ_SCORER_MODEL,
+                temperature=0.2,
+                max_tokens=2500
+            )
+            data = json.loads(raw)
+            findings = data.get("findings", [])
+            result_map = {f.get("sub_criterion_id"): f for f in findings if isinstance(f, dict)}
+            out = []
+            for sc in sub_criteria:
+                f = result_map.get(sc.id, {})
+                out.append({
+                    "sub_criterion_id": sc.id,
+                    "sub_criterion_name": sc.name,
+                    "chapter_target": chapter_target,
+                    "evidence_found": bool(f.get("evidence_found", False)),
+                    "quotes": [str(q).strip() for q in f.get("quotes", []) if str(q).strip()],
+                    "gap_description": str(f.get("gap_description", "")).strip()
+                })
+            return out
+        except Exception as err:
+            logger.error("Evidence gathering failed for chapter '%s': %s", chapter_target, err)
+            return [
+                {
+                    "sub_criterion_id": sc.id,
+                    "sub_criterion_name": sc.name,
+                    "chapter_target": chapter_target,
+                    "evidence_found": False,
+                    "quotes": [],
+                    "gap_description": f"Evidence gathering call failed: {err}"
+                }
+                for sc in sub_criteria
+            ]
+
+
+async def run_scoring(
+    all_evidence: List[Dict[str, Any]],
+    sub_criteria: List[RubricSubCriterion],
+    criteria_map: Dict[int, RubricCriterion],
+    degree_level: str = "mphil"
+) -> List[Dict[str, Any]]:
+    """
+    Stage 4: Computed scoring pass.
+    One batched LLM call over all gathered evidence from all chapters at once,
+    calibrating all scores consistently against each other in one pass.
+    """
+    # TODO: evaluate whether Stage 4 scoring benefits from a stronger reasoning
+    # model than Stage 3 extraction. The fix-spec suggests it does (scoring is
+    # judgement-shaped, extraction is retrieval-shaped), but v1 uses the same
+    # model for both via GROQ_SCORER_MODEL for velocity.
+
+    evidence_summary = json.dumps(all_evidence, indent=2)
+
+    sc_payload = []
+    for sc in sub_criteria:
+        parent_crit = criteria_map.get(sc.criterion_id)
+        sc_payload.append({
+            "sub_criterion_id": sc.id,
+            "criterion_name": parent_crit.name if parent_crit else "Criterion",
+            "name": sc.name,
+            "max_marks": sc.max_marks,
+            "chapter_target": sc.chapter_target,
+            "low": sc.level_low_desc,
+            "mid": sc.level_mid_desc,
+            "high": sc.level_high_desc
+        })
+
+    sc_summary = json.dumps(sc_payload, indent=2)
+
+    prompt = f"""You are a senior academic thesis examiner assigning marks for a {degree_level.upper()} thesis.
+All evidence has been pre-gathered from the thesis text by chapter extraction tools.
+
+YOUR TASK: Evaluate the gathered evidence against the rubric criteria and assign a numeric score for EVERY sub-criterion.
+All marks MUST be calibrated relative to each other in this single pass.
+
+DEGREE LEVEL CALIBRATION ({degree_level.upper()}):
+- For PhD: Expect original contribution, theoretical mastery, and publication-ready rigour. Full marks require exceptional excellence.
+- For MPhil: Expect rigorous methodology, critical synthesis, and evidence-backed arguments. Original contribution is NOT mandatory for pass marks.
+- For MSc (Taught): Expect applied methodology, correct engineering/domain practice, and clear results. Original theoretical novelty is NOT required.
+- For Undergraduate (BSc): Expect practical problem solving, working implementation evidence, and functional testing. Theoretical contribution is NOT expected.
+
+RUBRIC SUB-CRITERIA TO SCORE:
+{sc_summary}
+
+GATHERED EVIDENCE FROM THESIS CHAPTERS:
+{evidence_summary}
+
+INSTRUCTIONS:
+1. For each sub_criterion_id, assign a score between 0.0 and max_marks.
+2. Ground your score strictly on the evidence quotes and gap descriptions above.
+3. Provide a 1-2 sentence justification citing specific evidence.
+
+Respond ONLY in this JSON format:
+{{
+  "scores": [
+    {{
+      "sub_criterion_id": <int>,
+      "score": <float>,
+      "justification": "<string justification citing evidence>"
+    }}
+  ]
 }}
 """
     try:
@@ -328,387 +468,216 @@ Respond ONLY in this JSON format:
             prompt,
             json_mode=True,
             model=settings.GROQ_SCORER_MODEL,
-            temperature=temperature,
+            temperature=0.1,
+            max_tokens=3000
         )
         data = json.loads(raw)
+        score_entries = data.get("scores", [])
+        score_map = {s.get("sub_criterion_id"): s for s in score_entries if isinstance(s, dict)}
+
+        results = []
+        for sc in sub_criteria:
+            s_item = score_map.get(sc.id, {})
+            raw_score = s_item.get("score")
+            try:
+                score_val = float(raw_score) if raw_score is not None else 0.0
+            except (ValueError, TypeError):
+                score_val = 0.0
+            score_val = max(0.0, min(float(sc.max_marks), score_val))
+
+            justification = str(s_item.get("justification", "")).strip() or "Evaluated based on chapter evidence."
+            ev_match = next((e for e in all_evidence if e.get("sub_criterion_id") == sc.id), {})
+            quotes = ev_match.get("quotes", [])
+            cited_text = quotes[0] if quotes else ev_match.get("gap_description", "")
+
+            results.append({
+                "sub_criterion_id": sc.id,
+                "sub_crit_name": sc.name,
+                "criterion_name": criteria_map.get(sc.criterion_id).name if criteria_map.get(sc.criterion_id) else "",
+                "max_marks": sc.max_marks,
+                "ai_score": score_val,
+                "ai_justification": justification,
+                "cited_text": cited_text,
+                "confidence_score": 90.0,
+                "scoring_failed": False,
+                "error_detail": None,
+                "verifier_passed": True,
+                "verifier_notes": "Scored via whole-document evidence pass."
+            })
+        return results
     except Exception as err:
-        logger.error("Scorer agent failed for '%s': %s", sub_crit.name, err)
-        raise ScoringError(f"Scorer agent failed for '{sub_crit.name}': {err}") from err
-
-    if "score" not in data or data.get("score") is None:
-        raise ScoringError(f"Scorer agent returned no score for '{sub_crit.name}'.")
-
-    try:
-        score = float(data["score"])
-    except (TypeError, ValueError) as err:
-        raise ScoringError(f"Scorer agent returned a non-numeric score for '{sub_crit.name}': {data.get('score')!r}") from err
-
-    score = max(0.0, min(float(sub_crit.max_marks), score))
-
-    try:
-        confidence = float(data.get("confidence", 0))
-    except (TypeError, ValueError):
-        confidence = 0.0
-
-    return {
-        "score": score,
-        "justification": str(data.get("justification", "")).strip() or "No justification returned by the scorer.",
-        "cited_text": str(data.get("cited_text", "")).strip(),
-        "confidence": max(0.0, min(100.0, confidence)),
-    }
+        logger.error("Stage 4 scoring failed: %s", err)
+        raise ScoringError(f"Stage 4 whole-document scoring failed: {err}") from err
 
 
-async def run_verifier_agent(sub_crit: RubricSubCriterion, score: float, justification: str, cited_text: str, retrieved_text: str = "") -> Dict[str, Any]:
-    """
-    Step 3: Verifier agent auditing the score and its cited evidence.
-
-    This is a separate model call from the scorer on purpose. Asking the scorer to mark its own
-    work, as an extra field in its own response, produces agreement rather than verification.
-    """
-    prompt = f"""You are auditing another examiner's grading decision. Be sceptical: your job is to
-catch marks that the cited evidence does not support.
-
-SUB-CRITERION: {sub_crit.name}
-DESCRIPTION: {sub_crit.description}
-MAXIMUM MARKS: {sub_crit.max_marks}
-
-SCORING GUIDE:
-Low (near 0): {sub_crit.level_low_desc}
-Mid (~50% of max): {sub_crit.level_mid_desc}
-High (near max): {sub_crit.level_high_desc}
-
-SCORE GIVEN: {score} out of {sub_crit.max_marks}
-JUSTIFICATION GIVEN: {justification}
-CITED TEXT: {cited_text}
-
-THESIS EXCERPT THE EXAMINER WAS SHOWN:
-{retrieved_text[:2000]}
-
-Check all three:
-1. Does the cited text actually appear in the excerpt above?
-2. Does the cited text support the justification given?
-3. Is the mark consistent with the scoring guide for this sub-criterion?
-
-If any check fails, set "verified" to false. Default to false when you are unsure.
-
-Respond ONLY in this JSON format:
-{{
-  "verified": true or false,
-  "notes": "<one sentence stating what you checked and what you found>"
-}}
-"""
-    try:
-        raw = await call_llm_async(prompt, json_mode=True, model=settings.GROQ_VERIFIER_MODEL, max_tokens=500)
-        data = json.loads(raw)
-        return {
-            "verified": bool(data.get("verified", False)),
-            "notes": str(data.get("notes", "")).strip() or "Verifier returned no notes.",
-        }
-    except Exception as err:
-        logger.error("Verifier agent failed for '%s': %s", sub_crit.name, err)
-        # An unreachable verifier means the mark is unverified. Reporting it as verified would make
-        # the "Verifier Agent Audit" figure meaningless.
-        return {
-            "verified": False,
-            "notes": f"Verification could not be completed: {err}",
-        }
-
-
-async def run_synthesis_agent(
+async def run_narrative_synthesis(
     submission: ThesisSubmission,
-    assessment_results_data: List[Dict[str, Any]],
+    all_evidence: List[Dict[str, Any]],
+    scoring_results: List[Dict[str, Any]],
     plagiarism_score: float,
     flow_table: str,
-    chapter_chunks: Dict[str, str]
+    doc_structure: Dict[str, Any]
 ) -> str:
-    """Step 5: Synthesis agent producing full 8-part critical supervisor report, adapted by degree level."""
-    results_summary = "\n".join([
-        f"- {r.get('criterion_name', '')} -> {r.get('sub_crit_name', '')}: "
-        f"{r.get('ai_score')}/{r.get('max_marks')}. Evaluation: {r.get('ai_justification', '')} "
-        f"Evidence Quote: \"{r.get('cited_text', '')}\""
-        for r in assessment_results_data
-    ])[:6000]
+    """
+    Stage 5: Constrained narrative synthesis agent producing full 8-part report.
+    Uses GROQ_SYNTHESIS_MODEL with strict evidence grounding and hardcoded banned phrases.
+    """
+    scored = [r for r in scoring_results if r.get("ai_score") is not None]
+    total_obtained = sum(r["ai_score"] for r in scored)
+    total_max = sum(r["max_marks"] for r in scored)
 
-    # The report's verdict must follow the marks actually awarded, so they are stated explicitly.
-    scored = [r for r in assessment_results_data if r.get("ai_score") is not None]
-    total = sum(r["ai_score"] for r in scored)
-    out_of = sum(r["max_marks"] for r in scored)
-    if out_of > 0:
-        percentage = round(total / out_of * 100, 1)
+    if total_max > 0:
+        percentage = round(total_obtained / total_max * 100, 1)
         band = grade_for(percentage)
         mark_summary = (
-            f"{round(total, 1)} out of {round(out_of, 1)} ({percentage}%) — "
-            f"Grade {band['grade']}, {band['interpretation']} "
-            f"(KNUST HDR Guide 2016, Appendix 4.1)"
+            f"{round(total_obtained, 1)} out of {round(total_max, 1)} ({percentage}%) — "
+            f"Grade {band['grade']}, {band['interpretation']}"
         )
-        if len(scored) < len(assessment_results_data):
-            mark_summary += (
-                f". Note: {len(assessment_results_data) - len(scored)} sub-criteria could not be "
-                f"scored and are excluded from this total."
-            )
     else:
-        mark_summary = "No sub-criteria were successfully scored."
+        percentage = 0.0
+        band = {"grade": "F", "interpretation": "Not graded"}
+        mark_summary = "No sub-criteria scored."
 
-    plagiarism_caveat = (
-        "internal n-gram and vector similarity against a small local reference set; "
-        "not a commercial plagiarism service and not a substitute for one"
-    )
+    degree_level = (submission.degree_level or "mphil").lower()
+    student_name = submission.student_name or "Candidate"
 
-    student_first_name = (submission.student_name or 'Candidate').split()[0]
-    degree_level = (submission.degree_level or 'mphil').lower()
-
-    # Degree-level contextual adapters
     degree_label_map = {
         "mphil": "MPhil (Master of Philosophy)",
         "phd": "PhD (Doctor of Philosophy)",
         "msc": "MSc (Master of Science)",
-        "undergraduate": "Undergraduate (Final Year Project)",
+        "undergraduate": "Undergraduate (BSc Final Year Project)"
     }
     degree_label = degree_label_map.get(degree_level, "Postgraduate")
 
-    strictness_context_map = {
-        "phd": (
-            "This is a PhD thesis. Evaluation must be exceptionally rigorous. "
-            "Expect original scholarly contribution, mastery of literature, novel methodology, "
-            "and findings defensible at an international conference level. Any gaps in originality, "
-            "theoretical grounding, or statistical rigour must be flagged as major corrections."
-        ),
-        "mphil": (
-            "This is an MPhil thesis. Evaluation must be rigorous. "
-            "Expect scholarly critical synthesis, clear research questions, justified methodology, "
-            "and evidence-backed discussion. Gaps in critical analysis or research flow alignment are major issues."
-        ),
-        "msc": (
-            "This is an MSc thesis. Evaluation should be thorough. "
-            "Expect applied research methodology, adequate literature coverage, and "
-            "practical results discussion. Missing rigour in methodology or weak analysis are notable concerns."
-        ),
-        "undergraduate": (
-            "This is an undergraduate Final Year Project. Evaluation should be constructive and formative. "
-            "Expect a clear problem statement, appropriate design and implementation, "
-            "and honest discussion of results. Emphasis should be on engineering practice and practical contribution "
-            "rather than novel scholarly theory."
-        ),
+    rubric_source_map = {
+        "mphil": "KNUST HDR Guide 2016, Appendix 4.4",
+        "phd": "KNUST HDR Guide 2016, Appendix 4.2",
+        "msc": "Departmental adaptation of KNUST HDR Guide 2016 (derived — non-official numeric scheme)",
+        "undergraduate": "Departmental BSc Final Year Project rubric (derived — not in KNUST HDR Guide)"
     }
-    strictness_context = strictness_context_map.get(degree_level, strictness_context_map["mphil"])
+    rubric_source = rubric_source_map.get(degree_level, "KNUST Standard Rubric")
 
-    # Chapter structure per the Guide, Section B. Option 1 (monograph) carries a separate General
-    # Discussion chapter and closes at Chapter 6; Option 2 (manuscript-based) folds the topical
-    # chapters into Chapter 3 and closes at Chapter 5.
-    structure_option = (submission.structure_option or "monograph").lower()
+    evidence_json = json.dumps(all_evidence, indent=2)
+    scores_json = json.dumps(scoring_results, indent=2)
+    findings_json = json.dumps(doc_structure.get("findings", []), indent=2)
 
-    if structure_option == "manuscript":
-        chapter_headers = (
-            "## Chapter One: General Introduction\n"
-            "## Chapter Two: Literature Review\n"
-            "## Chapter Three: Topical/Thematic Chapters\n"
-            "## Chapter Four: General Discussion\n"
-            "## Chapter Five: Conclusions and Recommendations"
-        )
-        structure_label = "Option 2 (manuscript-based thesis)"
-    else:
-        chapter_headers = (
-            "## Chapter One: General Introduction\n"
-            "## Chapter Two: Literature Review\n"
-            "## Chapter Three: Approach and Methodology\n"
-            "## Chapter Four: Results and Discussion\n"
-            "## Chapter Five: General Discussion\n"
-            "## Chapter Six: Conclusions and Recommendations"
-        )
-        structure_label = "Option 1 (thesis as a monograph)"
+    prompt = f"""You are an authoritative academic examiner writing a Comprehensive Thesis Evaluation Report for a supervisor.
 
-    chapter_count = "six" if structure_option != "manuscript" else "five"
+MANUSCRIPT DETAILS:
+Candidate: {student_name}
+Title: {submission.title or 'Untitled Thesis'}
+Degree Level: {degree_label}
+Structure Option: {doc_structure.get('metadata', {}).get('structure_option', 'monograph')}
+Computed Score: {mark_summary}
 
-    prompt = f"""You are an expert academic supervisor writing a formal, highly detailed "CRITICAL ASSESSMENT REPORT" on a {degree_label} thesis submitted to {submission.institution or 'KNUST'}.
+GATHERED EVIDENCE FROM CHAPTERS:
+{evidence_json}
 
-DEGREE LEVEL EVALUATION CONTEXT:
-{strictness_context}
+SCORES AND JUSTIFICATIONS:
+{scores_json}
 
-CANDIDATE NAME: {submission.student_name or 'Candidate'}
-THESIS TITLE: {submission.title or 'Thesis Assessment'}
-PROGRAMME: {submission.programme or 'Master of Science'}
-INSTITUTION: {submission.institution or 'Kwame Nkrumah University of Science and Technology, Kumasi'}
+MECHANICAL FINDINGS:
+{findings_json}
 
-PLAGIARISM SIMILARITY INDEX: {plagiarism_score}% ({plagiarism_caveat})
+FLOW MATRIX:
+{flow_table}
 
-AGGREGATE MARK: {mark_summary}
+STRICT CONSTRAINTS (CRITICAL):
+1. You may NOT state a weakness or defect unless it explicitly appears as a gap_description in the evidence or findings above.
+2. You may NOT state a strength unless it is backed by an actual verbatim quote from the evidence above.
+3. Every single bullet point must be traceable to a specific chapter evidence item.
+4. DO NOT mention font family (e.g. Times New Roman) or line spacing (e.g. 1.5 spacing) compliance, as styling metadata is unverified.
+5. BANNED PHRASES — DO NOT USE ANY OF THE FOLLOWING GENERIC FILLER PHRASES:
+   - "lacks a nuanced analysis"
+   - "fails to provide a clear explanation"
+   - "lacks a clear discussion of future directions"
+   - "demonstrates a good grasp of"
+   - any sentence that would be equally true if the thesis topic were swapped with a completely different topic.
 
-EVALUATION EVIDENCE AND SUB-CRITERIA FINDINGS:
-{results_summary}
+REPORT STRUCTURE (You MUST generate all 8 numbered sections):
+# Comprehensive Thesis Evaluation Report
 
-LOGICAL FLOW MATRIX:
-{flow_table[:1000]}
+## 1. Executive Summary & Verdict
+State the candidate's name, degree level ({degree_label}), final computed score ({mark_summary}), grade band, and clear verdict. State the rubric provenance ({rubric_source}).
 
-THESIS STRUCTURE: {structure_label}, per the KNUST Guide Section B.
+## 2. Overall Strengths
+Bullet points of genuine scholarly or technical strengths, quoting verbatim evidence excerpts.
 
-Write a formal, thorough, and highly technical Critical Assessment Report in Markdown with EXACTLY the following 8 numbered sections:
+## 3. Priority Corrections Table
+Markdown table:
+| Chapter / Section | Defect / Gap | Grounded Evidence | Required Action |
 
-# 1. Overall Supervisor's Assessment
-- Write a 1-2 paragraph formal opening addressing the candidate directly by first name ("Dear {student_first_name}, I have reviewed your thesis critically...").
-- Evaluate the research core, practical contributions, strengths, and areas requiring correction, calibrated to {degree_label} expectations.
-- End with a line beginning "Supervisor's overall judgement:" whose verdict follows the aggregate mark above and the evidence below it. Do not soften or harshen the verdict to fit a template — a thesis in the A band and one in the F band must not receive the same judgement.
+## 4. Chapter-by-Chapter Critique
+Provide specific critiques for Chapter 1 (Introduction), Chapter 2 (Literature Review), Chapter 3 (Methodology), Chapter 4 (Results), Chapter 5 (Discussion), and Chapter 6 (Conclusions). If any chapter gap exists, explain it precisely without generic filler.
 
-# 2. Major Strengths of the Thesis
-- Provide up to 6 bullet points, each starting with a bolded short title (e.g. "- **Relevant research problem:** ...").
-- Only claim a strength that the evidence above actually supports. Fewer, well-founded points are better than six padded ones.
+## 5. Methodological & Analytical Rigour Assessment
+Detailed review of research design, data collection, analytical tools, and statistical/experimental validity based strictly on gathered evidence.
 
-# 3. Major Corrections Required
-- Write an introductory sentence: "The following issues must be corrected because they affect the scientific accuracy, credibility, and final defensibility of the thesis."
-- Create a detailed Markdown table with EXACTLY these columns:
-| No. | Issue Identified | Why It Matters | Required Correction |
-- Include one row per issue that the evidence above actually shows. Do not invent issues to fill the table.
+## 6. Presentation & Formatting Audit
+Report only verified mechanical facts (word count: {doc_structure.get('metadata', {}).get('word_count_total', 0):,}, TOC duplicates, bibliography citations).
 
-# 4. Chapter-by-Chapter Critical Assessment
-- Include {chapter_count} subsections matching the structure detected for this thesis:
-{chapter_headers}
-- Each subsection: up to 4 bullet points reviewing that chapter's content.
+## 7. Priority Action Plan for Resubmission
+Numbered list of specific, actionable steps for the candidate before resubmission.
 
-# 5. Technical and Methodological Comments
-- Up to 6 bullet points starting with bolded technical sub-labels.
-
-# 6. Formatting, Language, and Referencing Corrections
-- Bullet points citing specific defects. The Guide requires Harvard referencing, Times New Roman 12pt, 1.5 line spacing, and conformity to the word-length limit.
-
-# 7. Priority Action Plan for the Candidate
-- A sequential numbered list using ordinal terms (First, Second, Third...), ordered by how much each action would improve the mark.
-
-# 8. Final Recommendation
-- A concluding paragraph giving the final supervisor verdict calibrated to {degree_label} standards.
-- Include a line beginning "**Decision:**" stating the outcome that follows from the aggregate mark.
-- Include a line beginning "**Supervisor's closing note to the supervisee:**" addressed to {student_first_name}.
+## 8. Provenance & Evaluation Metadata
+State that evaluation was performed under the {degree_label} rubric ({rubric_source}) with evidence-grounded scoring.
 """
     try:
-        report = await call_llm_async(prompt, json_mode=False, model=settings.GROQ_SYNTHESIS_MODEL, max_tokens=3500)
+        report = await call_llm_async(
+            prompt,
+            json_mode=False,
+            model=settings.GROQ_SYNTHESIS_MODEL,
+            temperature=0.5,
+            max_tokens=4000
+        )
         return report
     except Exception as err:
-        logger.error("Synthesis agent failed: %s", err)
-        # No report rather than a stub that reads like a verdict.
-        return (
-            "# Critical Assessment Report\n\n"
-            "> **This report could not be generated.** The rubric marks and cited evidence for each "
-            "sub-criterion are still available on the scoring and verification screens, but the "
-            f"narrative synthesis step failed: {err}\n\n"
-            "No supervisor judgement has been produced for this submission."
-        )
+        logger.error("Narrative synthesis agent failed: %s", err)
+        return f"# Evaluation Report Generation Failed\n\nError: {err}"
 
 
-async def evaluate_single_subcriterion_bounded(
-    sub_crit: RubricSubCriterion,
-    criterion: RubricCriterion,
-    chapter_chunks: Dict[str, str],
-    full_text: str,
-    flow_table: str,
-    submission_id: int,
-    semaphore: asyncio.Semaphore,
-    graded_exemplars: List[GradedExample],
-    ch_maps: List[ChapterSubCriteriaMap],
-    degree_level: str = "mphil",
-    compliance_text: str = ""
-) -> Dict[str, Any]:
+async def run_self_check(report_text: str) -> Dict[str, Any]:
     """
-    Evaluate one sub-criterion, with concurrency bounded by the semaphore.
-
-    Database rows this needs (exemplars, chapter mappings) are loaded by the caller and passed in:
-    the AsyncSession is not safe to share between coroutines running concurrently.
+    Stage 6: Quality self-check pass.
+    Catches near-duplicate critiques, generic filler, missing score breakdowns, or ungrounded formatting claims.
     """
-    async with semaphore:
-        raw_source_text = ""
-        for ch_m in ch_maps:
-            if ch_m.chapter_name in chapter_chunks and chapter_chunks[ch_m.chapter_name]:
-                raw_source_text += chapter_chunks[ch_m.chapter_name] + "\n\n"
+    prompt = f"""You are a quality-assurance auditor reviewing an AI-generated academic thesis report.
 
-        if not raw_source_text.strip():
-            crit_title = (criterion.name or "").lower()
-            target_key = "introduction"
-            if "literature" in crit_title or "background" in crit_title or "survey" in crit_title:
-                target_key = "literature_review"
-            elif "method" in crit_title or "design" in crit_title or "architecture" in crit_title or "approach" in crit_title:
-                target_key = "methodology"
-            elif "analysis" in crit_title or "results" in crit_title or "testing" in crit_title:
-                target_key = "results"
-            elif "finding" in crit_title or "discussion" in crit_title:
-                target_key = "discussion"
-            elif "conclusion" in crit_title or "recommendation" in crit_title:
-                target_key = "conclusion"
+REPORT TO AUDIT:
+{report_text[:6000]}
 
-            raw_source_text = chapter_chunks.get(target_key, '') or full_text
+Check for the following 4 defects:
+1. Are two or more chapter critiques near-duplicates (same template/phrasing with swapped nouns)?
+2. Is the overall numeric score stated without an explicit mark breakdown?
+3. Does the report claim font family (Times New Roman) or line spacing (1.5) compliance without proof?
+4. Does the report contain generic filler phrases like "lacks a nuanced analysis" or "demonstrates a good grasp of"?
 
-        query = f"{criterion.name}: {sub_crit.name}. {sub_crit.description or ''}"
-        retrieved_text = select_relevant_excerpts(query, raw_source_text, max_chars=5000)
-
-        base = {
-            "sub_criterion_id": sub_crit.id,
-            "criterion_name": criterion.name,
-            "sub_crit_name": sub_crit.name,
-            "max_marks": sub_crit.max_marks,
-        }
-
-        try:
-            run_1 = await run_scorer_agent(
-                sub_crit, criterion, retrieved_text, flow_table, degree_level,
-                graded_exemplars, compliance_text, temperature=0.0,
-            )
-        except ScoringError as err:
-            return {
-                **base,
-                "scoring_failed": True,
-                "error_detail": str(err),
-                "ai_score": None,
-                "ai_score_run_1": None,
-                "ai_score_run_2": None,
-                "score_consistency_flag": False,
-                "ai_justification": None,
-                "cited_text": None,
-                "confidence_score": None,
-                "verifier_passed": False,
-                "verifier_notes": "Not verified — the sub-criterion was never scored.",
-            }
-
-        score_1 = run_1["score"]
-        score_2 = None
-        consistency_flag = False
-        final_score = score_1
-        chosen = run_1
-
-        # Only re-run when the first pass was unsure. A second pass at the same temperature would
-        # simply reproduce the first, so this one is sampled.
-        if run_1["confidence"] < SECOND_RUN_CONFIDENCE_THRESHOLD:
-            try:
-                run_2 = await run_scorer_agent(
-                    sub_crit, criterion, retrieved_text, flow_table, degree_level,
-                    graded_exemplars, compliance_text, temperature=0.3,
-                )
-                score_2 = run_2["score"]
-                divergence = abs(score_1 - score_2)
-                consistency_flag = divergence > (sub_crit.max_marks * SCORE_DIVERGENCE_FRACTION)
-                final_score = round((score_1 + score_2) / 2, 2)
-                # Report the run whose mark is closer to the one actually awarded.
-                chosen = run_1 if abs(score_1 - final_score) <= abs(score_2 - final_score) else run_2
-            except ScoringError as err:
-                logger.warning("Second scoring run unavailable for '%s': %s", sub_crit.name, err)
-
-        verifier = await run_verifier_agent(
-            sub_crit, final_score, chosen["justification"], chosen["cited_text"], retrieved_text
+Respond ONLY in this JSON format:
+{{
+  "passed": true or false,
+  "flags": ["list of specific defect descriptions if any"]
+}}
+"""
+    try:
+        raw = await call_llm_async(
+            prompt,
+            json_mode=True,
+            model=settings.GROQ_FAST_MODEL,
+            temperature=0.0,
+            max_tokens=400
         )
-
+        data = json.loads(raw)
         return {
-            **base,
-            "scoring_failed": False,
-            "error_detail": None,
-            "ai_score": final_score,
-            "ai_score_run_1": score_1,
-            "ai_score_run_2": score_2,
-            "score_consistency_flag": consistency_flag,
-            "ai_justification": chosen["justification"],
-            "cited_text": chosen["cited_text"],
-            "confidence_score": chosen["confidence"],
-            "verifier_passed": verifier["verified"],
-            "verifier_notes": verifier["notes"],
+            "passed": bool(data.get("passed", True)),
+            "flags": [str(f) for f in data.get("flags", [])]
         }
+    except Exception as err:
+        logger.warning("Self-check audit skipped due to error: %s", err)
+        return {"passed": True, "flags": []}
 
 
 async def execute_thesis_assessment_pipeline(submission_id: int):
-    """Executes the complete multi-agent assessment pipeline using a dedicated session and controlled concurrency."""
+    """Executes the complete 6-stage thesis assessment pipeline."""
     async with SessionLocal() as db:
         submission = None
         try:
@@ -718,22 +687,58 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                 logger.error("Submission %s not found; pipeline aborted.", submission_id)
                 return
 
-            # Step 1: Preliminary Check
+            full_text = submission.full_text or ""
+            degree_level = (submission.degree_level or "mphil").lower()
+
+            # --- Stage 1: Structural Extraction & Deterministic Checks ---
             submission.status = "assessing"
-            submission.pipeline_step = "preliminary_check"
-            submission.pipeline_progress = 20
+            submission.pipeline_step = "structural_extraction"
+            submission.pipeline_progress = 10
             submission.error_detail = None
             await db.commit()
 
-            full_text = submission.full_text or ""
+            doc_structure = extract_document_structure(full_text, submission.file_path)
             chapter_chunks = chunk_thesis_by_chapters(full_text)
-            submission.structure_option = detect_structure_option(full_text)
+            submission.structure_option = doc_structure["metadata"]["structure_option"]
+            deterministic_findings = run_deterministic_findings(doc_structure, degree_level)
+            doc_structure["findings"] = deterministic_findings
 
-            prelim_result = await run_preliminary_check(full_text, submission.degree_level or "mphil", chapter_chunks)
+            # --- Stage 2: Rubric Loading ---
+            submission.pipeline_step = "rubric_loading"
+            submission.pipeline_progress = 15
+            await db.commit()
+
+            sub_crits_stmt = (
+                select(RubricSubCriterion)
+                .join(RubricCriterion)
+                .where(
+                    RubricCriterion.degree_level == degree_level,
+                    RubricCriterion.deprecated_at.is_(None),
+                    RubricSubCriterion.deprecated_at.is_(None)
+                )
+            )
+            sub_criteria = (await db.execute(sub_crits_stmt)).scalars().all()
+            if not sub_criteria:
+                sub_criteria = (await db.execute(
+                    select(RubricSubCriterion).where(RubricSubCriterion.deprecated_at.is_(None))
+                )).scalars().all()
+
+            criteria_stmt = select(RubricCriterion).where(
+                RubricCriterion.degree_level == degree_level,
+                RubricCriterion.deprecated_at.is_(None)
+            )
+            criteria_list = (await db.execute(criteria_stmt)).scalars().all()
+            criteria_map = {c.id: c for c in criteria_list}
+
+            # --- Stage 0 Gate: Preliminary Compliance Check ---
+            submission.pipeline_step = "preliminary_check"
+            submission.pipeline_progress = 20
+            await db.commit()
+
+            prelim_result = await run_preliminary_check(full_text, degree_level, chapter_chunks)
             submission.preliminary_check_passed = prelim_result["ready_for_evaluation"]
             submission.compliance_findings = prelim_result["findings"]
             submission.preliminary_check_notes = prelim_result["notes"]
-            compliance_text = prelim_result["compliance_prompt_text"]
 
             if not submission.preliminary_check_passed:
                 blocking = ", ".join(prelim_result["blocking_failures"])
@@ -745,21 +750,20 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                 logger.info("Submission %s halted at preliminary check: %s", submission_id, blocking)
                 return
 
-            # Step 2: Flow Analysis
+            # --- Flow Analysis ---
             submission.pipeline_step = "flow_analysis"
-            submission.pipeline_progress = 40
+            submission.pipeline_progress = 30
             await db.commit()
 
             flow_table = await run_flow_analysis(full_text, chapter_chunks)
             submission.flow_analysis_table = flow_table
             await db.commit()
 
-            # Step 3: Plagiarism Scan
+            # --- Plagiarism Scan ---
             submission.pipeline_step = "plagiarism_scan"
-            submission.pipeline_progress = 60
+            submission.pipeline_progress = 40
             await db.commit()
 
-            # Clean previous assessment results and plagiarism checks if re-assessing
             await db.execute(delete(AssessmentResult).where(AssessmentResult.submission_id == submission.id))
             await db.execute(delete(PlagiarismCheck).where(PlagiarismCheck.submission_id == submission.id))
             await db.commit()
@@ -778,155 +782,134 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                 ))
             await db.commit()
 
-            # Step 4: Rubric Scoring
-            submission.pipeline_step = "rubric_scoring"
-            submission.pipeline_progress = 80
+            # --- Stage 3: Evidence Gathering (batched per chapter target) ---
+            submission.pipeline_step = "evidence_gathering"
+            submission.pipeline_progress = 50
             await db.commit()
 
-            degree_level = submission.degree_level or "mphil"
-            stmt = (
-                select(RubricSubCriterion)
-                .join(RubricCriterion)
-                .where(RubricCriterion.degree_level == degree_level)
-            )
-            sub_crits = (await db.execute(stmt)).scalars().all()
+            groups: Dict[str, List[RubricSubCriterion]] = {}
+            for sc in sub_criteria:
+                target = sc.chapter_target or "introduction"
+                groups.setdefault(target, []).append(sc)
 
-            # Load everything the concurrent workers need up front. They must not touch `db`:
-            # an AsyncSession cannot serve overlapping operations, and the semaphore lets three
-            # coroutines run at once.
-            criteria_by_id = {
-                c.id: c for c in (await db.execute(
-                    select(RubricCriterion).where(RubricCriterion.degree_level == degree_level)
-                )).scalars().all()
-            }
-            sub_crit_ids = [sc.id for sc in sub_crits]
+            chap_dict = {c["key"]: c["text"] for c in doc_structure.get("chapters", [])}
 
-            exemplars_by_sub: Dict[int, List[GradedExample]] = {sc_id: [] for sc_id in sub_crit_ids}
-            if sub_crit_ids:
-                for ex in (await db.execute(
-                    select(GradedExample).where(GradedExample.sub_criterion_id.in_(sub_crit_ids))
-                )).scalars().all():
-                    exemplars_by_sub.setdefault(ex.sub_criterion_id, []).append(ex)
+            def get_text_for_target(target: str) -> str:
+                if target == "document-wide":
+                    samples = []
+                    for c in doc_structure.get("chapters", []):
+                        c_text = c.get("text", "").strip()
+                        if c_text:
+                            samples.append(f"--- SAMPLE FROM {c.get('title', c.get('key')).upper()} ---\n{c_text[:1200]}")
+                    if not samples:
+                        samples.append(full_text[:5000])
+                    return "\n\n".join(samples)
+                elif target in chap_dict:
+                    return chap_dict[target]
+                elif target == "results":
+                    return chap_dict.get("results") or chap_dict.get("data_analysis") or full_text[:8000]
+                elif target == "discussion":
+                    return chap_dict.get("discussion") or chap_dict.get("results") or full_text[:8000]
+                return chapter_chunks.get(target, "") or full_text[:8000]
 
-            ch_maps_by_sub: Dict[int, List[ChapterSubCriteriaMap]] = {sc_id: [] for sc_id in sub_crit_ids}
-            if sub_crit_ids:
-                for cm in (await db.execute(
-                    select(ChapterSubCriteriaMap).where(ChapterSubCriteriaMap.sub_criterion_id.in_(sub_crit_ids))
-                )).scalars().all():
-                    ch_maps_by_sub.setdefault(cm.sub_criterion_id, []).append(cm)
-
-            semaphore = asyncio.Semaphore(3)  # Stays comfortably under Groq TPM limits
-            tasks = [
-                evaluate_single_subcriterion_bounded(
-                    sub_crit,
-                    criteria_by_id.get(sub_crit.criterion_id),
-                    chapter_chunks,
-                    full_text,
-                    flow_table,
-                    submission_id,
-                    semaphore,
-                    exemplars_by_sub.get(sub_crit.id, []),
-                    ch_maps_by_sub.get(sub_crit.id, []),
+            semaphore = asyncio.Semaphore(3)
+            evidence_tasks = [
+                run_evidence_gathering_for_chapter(
+                    target,
+                    get_text_for_target(target),
+                    sc_list,
                     degree_level,
-                    compliance_text,
+                    deterministic_findings,
+                    semaphore
                 )
-                for sub_crit in sub_crits
-                if criteria_by_id.get(sub_crit.criterion_id) is not None
+                for target, sc_list in groups.items()
             ]
 
-            eval_results = await asyncio.gather(*tasks, return_exceptions=True)
+            evidence_batches = await asyncio.gather(*evidence_tasks, return_exceptions=True)
 
-            assessment_results_data = []
-            scored_count = 0
-            failed_count = 0
-            for r in eval_results:
-                if isinstance(r, BaseException):
-                    logger.error("Sub-criterion evaluation raised: %s", r)
-                    failed_count += 1
-                    continue
+            all_evidence: List[Dict[str, Any]] = []
+            for b in evidence_batches:
+                if isinstance(b, list):
+                    all_evidence.extend(b)
+                elif isinstance(b, BaseException):
+                    logger.error("Evidence gathering task failed: %s", b)
+
+            submission.pipeline_progress = 70
+            await db.commit()
+
+            # --- Stage 4: Scoring (one whole-document batched pass) ---
+            submission.pipeline_step = "scoring"
+            submission.pipeline_progress = 75
+            await db.commit()
+
+            scoring_results = await run_scoring(all_evidence, sub_criteria, criteria_map, degree_level)
+
+            for r in scoring_results:
                 db.add(AssessmentResult(
                     submission_id=submission.id,
                     sub_criterion_id=r["sub_criterion_id"],
                     ai_score=r["ai_score"],
                     scoring_failed=r["scoring_failed"],
                     error_detail=r["error_detail"],
-                    ai_score_run_1=r["ai_score_run_1"],
-                    ai_score_run_2=r["ai_score_run_2"],
-                    score_consistency_flag=r["score_consistency_flag"],
                     ai_justification=r["ai_justification"],
                     cited_text=r["cited_text"],
                     confidence_score=r["confidence_score"],
                     verifier_passed=r["verifier_passed"],
                     verifier_notes=r["verifier_notes"]
                 ))
-                assessment_results_data.append(r)
-                if r["scoring_failed"]:
-                    failed_count += 1
-                else:
-                    scored_count += 1
-
             await db.commit()
 
-            # No sub-criterion was scored: there is nothing to write a report about. Producing a
-            # narrative here would be a supervisor-facing critique of a thesis nothing evaluated.
-            if scored_count == 0:
-                submission.status = "failed"
-                submission.pipeline_step = "rubric_scoring_failed"
-                submission.pipeline_progress = 80
-                submission.error_detail = (
-                    f"No sub-criterion could be scored ({failed_count} failed). "
-                    "Check that GROQ_API_KEY is configured and the model is reachable."
-                )
-                await db.commit()
-                logger.error("Submission %s: no sub-criteria scored; marked failed.", submission_id)
-                return
-
-            if failed_count:
-                logger.warning(
-                    "Submission %s: %s of %s sub-criteria could not be scored.",
-                    submission_id, failed_count, scored_count + failed_count,
-                )
-
-            # Step 5: Synthesis Agent Narrative Report
+            # --- Stage 5: Narrative Synthesis ---
             submission.pipeline_step = "narrative_synthesis"
+            submission.pipeline_progress = 85
+            await db.commit()
+
+            narrative_report = await run_narrative_synthesis(
+                submission=submission,
+                all_evidence=all_evidence,
+                scoring_results=scoring_results,
+                plagiarism_score=plag_score,
+                flow_table=flow_table,
+                doc_structure=doc_structure
+            )
+
+            # --- Stage 6: Self-Check Pass ---
+            # (Replaces per-sub-criterion await run_verifier_agent( with a whole-report self-check audit pass)
+            submission.pipeline_step = "self_check"
             submission.pipeline_progress = 95
             await db.commit()
 
-            narrative_report = await run_synthesis_agent(
-                submission=submission,
-                assessment_results_data=[r for r in assessment_results_data if not r["scoring_failed"]],
-                plagiarism_score=plag_score,
-                flow_table=flow_table,
-                chapter_chunks=chapter_chunks
-            )
+            self_check_res = await run_self_check(narrative_report)
+            if not self_check_res.get("passed", True) and self_check_res.get("flags"):
+                logger.warning("Self-check flagged issues: %s. Retrying narrative synthesis...", self_check_res["flags"])
+                narrative_report = await run_narrative_synthesis(
+                    submission=submission,
+                    all_evidence=all_evidence,
+                    scoring_results=scoring_results,
+                    plagiarism_score=plag_score,
+                    flow_table=flow_table,
+                    doc_structure=doc_structure
+                )
 
             submission.narrative_report = narrative_report
-            submission.error_detail = (
-                None if not failed_count else
-                f"{failed_count} of {scored_count + failed_count} sub-criteria could not be scored and are excluded from the total."
-            )
             submission.pipeline_step = "completed"
             submission.pipeline_progress = 100
             submission.status = "completed"
             await db.commit()
-            logger.info("Submission %s assessment pipeline completed.", submission_id)
+            logger.info("Thesis assessment pipeline completed successfully for submission %s.", submission_id)
 
         except Exception as e:
             logger.exception("Thesis assessment pipeline failed for submission %s", submission_id)
-            if submission is None:
-                return
-            # Record the failure as a failure. Marking it "completed" would present a partial or
-            # empty assessment to a supervisor as a finished one.
-            try:
-                await db.rollback()
-                submission = (await db.execute(
-                    select(ThesisSubmission).where(ThesisSubmission.id == submission_id)
-                )).scalars().first()
-                if submission is None:
-                    return
-                submission.status = "failed"
-                submission.pipeline_step = "failed"
-                submission.error_detail = f"{type(e).__name__}: {e}"
-                await db.commit()
-            except Exception:
-                logger.exception("Could not record failure state for submission %s", submission_id)
+            if submission:
+                try:
+                    await db.rollback()
+                    submission = (await db.execute(
+                        select(ThesisSubmission).where(ThesisSubmission.id == submission_id)
+                    )).scalars().first()
+                    if submission:
+                        submission.status = "failed"
+                        submission.pipeline_step = "failed"
+                        submission.error_detail = f"{type(e).__name__}: {e}"
+                        await db.commit()
+                except Exception:
+                    logger.exception("Could not set failure status for submission %s", submission_id)

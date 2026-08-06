@@ -1,6 +1,6 @@
 import os
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 
 def extract_text_from_docx(file_path: str) -> str:
     """Extract plain text from a .docx file."""
@@ -246,3 +246,175 @@ def chunk_thesis_by_chapters(full_text: str) -> Dict[str, str]:
         chunks["discussion"] = chunks["results"] or chunks["data_analysis"]
 
     return chunks
+
+
+def extract_document_structure(full_text: str, file_path: str = None) -> Dict[str, Any]:
+    """
+    Extract structured document elements: chapters, tables, figures, references, TOC entries,
+    and metadata for Stage 1.
+    """
+    chunks = chunk_thesis_by_chapters(full_text)
+    paragraphs = [p.strip() for p in full_text.split("\n\n") if p.strip()]
+
+    # Extract chapters
+    chapters = []
+    chapter_titles = {
+        "introduction": "Introduction",
+        "literature_review": "Literature Review",
+        "methodology": "Approach and Methodology",
+        "data_analysis": "Data Analysis",
+        "results": "Results and Findings",
+        "discussion": "Discussion",
+        "conclusion": "Conclusions and Recommendations",
+        "references": "References"
+    }
+    for idx, (k, v) in enumerate(chunks.items(), 1):
+        if v and len(v.strip()) > 20:
+            words = len(v.split())
+            chapters.append({
+                "id": f"ch{idx}",
+                "key": k,
+                "title": chapter_titles.get(k, k.capitalize()),
+                "text": v,
+                "word_count": words
+            })
+
+    # Extract tables and figures via regex captions
+    tables = []
+    table_matches = re.findall(r"(?i)\b(Table\s+\d+(?:\.\d+)?[:\s].*?)(?=\n\n|\Z)", full_text)
+    for idx, t in enumerate(table_matches[:20], 1):
+        lines = t.strip().split("\n")
+        caption = lines[0] if lines else f"Table {idx}"
+        tables.append({"id": f"t{idx}", "caption": caption[:150], "raw": t[:300]})
+
+    figures = []
+    fig_matches = re.findall(r"(?i)\b((?:Figure|Fig\.)\s+\d+(?:\.\d+)?[:\s].*?)(?=\n\n|\Z)", full_text)
+    for idx, f in enumerate(fig_matches[:20], 1):
+        lines = f.strip().split("\n")
+        caption = lines[0] if lines else f"Figure {idx}"
+        figures.append({"id": f"fig{idx}", "caption": caption[:150]})
+
+    # Extract section headings for TOC duplicate detection
+    toc_entries = []
+    heading_sec_re = re.compile(r"^\s*(\d+(?:\.\d+)+)\s+(.+)$")
+    for para in paragraphs:
+        m = heading_sec_re.match(para)
+        if m and len(para) < 100:
+            toc_entries.append({"number": m.group(1), "title": m.group(2).strip()})
+
+    # Extract references
+    ref_text = chunks.get("references", "")
+    references = []
+    if ref_text:
+        ref_lines = [r.strip() for r in ref_text.split("\n\n") if len(r.strip()) > 20]
+        if not ref_lines:
+            ref_lines = [r.strip() for r in ref_text.split("\n") if len(r.strip()) > 30]
+
+        # Check in-text citation for each reference
+        body_text = "\n\n".join(v for k, v in chunks.items() if k != "references")
+        for idx, ref in enumerate(ref_lines[:100], 1):
+            # Try author surname matching
+            author_match = re.search(r"^([A-Z][a-zA-Z\-]+)", ref)
+            author = author_match.group(1) if author_match else ""
+            year_match = re.search(r"\b(19\d\d|20\d\d)\b", ref)
+            year = year_match.group(1) if year_match else ""
+
+            cited = False
+            if author and len(author) > 2 and author.lower() not in ("the", "and", "a", "an"):
+                if year:
+                    cited = bool(re.search(rf"\b{re.escape(author)}\b.{0,30}\b{year}\b", body_text, re.IGNORECASE))
+                else:
+                    cited = author.lower() in body_text.lower()
+            elif year:
+                cited = year in body_text
+
+            references.append({"raw": ref[:200], "cited_in_text": cited})
+
+    total_words = len(full_text.split())
+
+    return {
+        "chapters": chapters,
+        "tables": tables,
+        "figures": figures,
+        "references": references,
+        "toc": toc_entries,
+        "metadata": {
+            "font_info_available": False,
+            "spacing_info_available": False,
+            "word_count_total": total_words,
+            "structure_option": detect_structure_option(full_text)
+        }
+    }
+
+
+def run_deterministic_findings(doc_structure: Dict[str, Any], degree_level: str) -> List[Dict[str, Any]]:
+    """
+    Run deterministic structural checks against extracted document structure.
+    Returns findings that are fed into Stage 3 as pre-verified facts.
+    """
+    findings = []
+    degree_level = (degree_level or "mphil").lower()
+
+    # 1. Duplicate section numbers
+    numbers_seen = {}
+    duplicates = []
+    for item in doc_structure.get("toc", []):
+        num = item["number"]
+        if num in numbers_seen:
+            duplicates.append(f"Section {num} appears multiple times ('{numbers_seen[num]}' and '{item['title']}')")
+        else:
+            numbers_seen[num] = item["title"]
+
+    if duplicates:
+        findings.append({
+            "check": "duplicate_section_numbers",
+            "status": "warning",
+            "detail": "; ".join(duplicates[:3])
+        })
+
+    # 2. Uncited references
+    refs = doc_structure.get("references", [])
+    if refs:
+        uncited = [r for r in refs if not r["cited_in_text"]]
+        if uncited:
+            findings.append({
+                "check": "uncited_references",
+                "status": "info",
+                "detail": f"{len(uncited)} of {len(refs)} bibliography entries were not found cited in text."
+            })
+    else:
+        findings.append({
+            "check": "references_present",
+            "status": "warning",
+            "detail": "No explicit references section detected."
+        })
+
+    # 3. Word count check
+    total_words = doc_structure.get("metadata", {}).get("word_count_total", 0)
+    word_thresholds = {
+        "phd": (40000, 100000),
+        "mphil": (20000, 60000),
+        "msc": (10000, 40000),
+        "undergraduate": (3000, 20000)
+    }
+    min_w, max_w = word_thresholds.get(degree_level, (10000, 60000))
+    if total_words < min_w:
+        findings.append({
+            "check": "word_count_conformity",
+            "status": "fail" if degree_level in ("phd", "mphil") else "warning",
+            "detail": f"Total word count of {total_words:,} words is below the minimum threshold ({min_w:,} words) for {degree_level.upper()}."
+        })
+
+    # 4. Check missing chapters
+    chap_keys = {c.get("key") for c in doc_structure.get("chapters", [])}
+    expected = ["introduction", "methodology", "results", "conclusion"]
+    missing = [k for k in expected if k not in chap_keys]
+    if missing:
+        findings.append({
+            "check": "chapter_completeness",
+            "status": "warning",
+            "detail": f"Missing core chapter sections: {', '.join(missing)}"
+        })
+
+    return findings
+
