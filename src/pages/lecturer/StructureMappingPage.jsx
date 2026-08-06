@@ -15,7 +15,7 @@ const PIPELINE_STEPS = [
   { key: 'self_check', label: 'Quality Verification', desc: 'Running self-check audit pass' },
 ];
 
-function getStepIndex(stepKey) {
+function getStepIndex(stepKey, currentProgress = 0) {
   if (!stepKey || stepKey === 'structural_extraction') return 0;
   if (stepKey === 'rubric_loading') return 1;
   if (stepKey === 'preliminary_check') return 2;
@@ -26,6 +26,17 @@ function getStepIndex(stepKey) {
   if (stepKey === 'narrative_synthesis') return 7;
   if (stepKey === 'self_check') return 8;
   if (stepKey === 'completed') return 9;
+  if (stepKey === 'failed') {
+    if (currentProgress >= 95) return 8;
+    if (currentProgress >= 85) return 7;
+    if (currentProgress >= 75) return 6;
+    if (currentProgress >= 50) return 5;
+    if (currentProgress >= 40) return 4;
+    if (currentProgress >= 30) return 3;
+    if (currentProgress >= 20) return 2;
+    if (currentProgress >= 15) return 1;
+    return 0;
+  }
   return 0;
 }
 
@@ -99,19 +110,31 @@ export default function StructureMappingPage() {
 
     // Auto-poll while assessment pipeline is actively running
     const interval = setInterval(() => {
-      if (!prelimCheck || (prelimCheck.status !== 'completed' && prelimCheck.status !== 'reviewed' && prelimCheck.ready_for_evaluation !== false)) {
+      if (!prelimCheck || (prelimCheck.status !== 'completed' && prelimCheck.status !== 'reviewed' && prelimCheck.status !== 'failed' && prelimCheck.pipeline_step !== 'failed' && prelimCheck.ready_for_evaluation !== false)) {
         loadData();
       }
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [id, prelimCheck?.status, prelimCheck?.ready_for_evaluation]);
+  }, [id, prelimCheck?.status, prelimCheck?.pipeline_step, prelimCheck?.ready_for_evaluation]);
 
-  const isFailed = prelimCheck && prelimCheck.ready_for_evaluation === false;
-  const isPassed = prelimCheck && (prelimCheck.status === 'completed' || prelimCheck.status === 'reviewed') && prelimCheck.ready_for_evaluation === true;
+  const isFailed = prelimCheck && (prelimCheck.status === 'failed' || prelimCheck.pipeline_step === 'failed' || prelimCheck.ready_for_evaluation === false);
+  const isPassed = prelimCheck && (prelimCheck.status === 'completed' || prelimCheck.status === 'reviewed') && prelimCheck.ready_for_evaluation !== false;
   const isAssessing = loading || !prelimCheck || (!isFailed && !isPassed);
 
-  const currentStepIdx = getStepIndex(prelimCheck?.pipeline_step);
+  const currentStepIdx = getStepIndex(prelimCheck?.pipeline_step, prelimCheck?.pipeline_progress || 0);
+
+  const handleRetry = async () => {
+    try {
+      setLoading(true);
+      await authFetch(`/api/submissions/${id}/assess`, { method: 'POST' });
+      await loadData();
+    } catch (e) {
+      console.error("Failed to trigger assessment retry:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-on-surface font-body flex flex-col">
@@ -157,9 +180,17 @@ export default function StructureMappingPage() {
               </span>
             )}
             {isFailed && (
-              <span className="text-[11px] text-red-600 font-semibold mt-1">
-                Evaluation halted — Preliminary gate check failed
-              </span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] text-red-600 font-semibold">
+                  {prelimCheck?.error_detail ? `Evaluation failed: ${prelimCheck.error_detail}` : 'Evaluation halted'}
+                </span>
+                <button
+                  onClick={handleRetry}
+                  className="px-2.5 py-1 bg-red-600 text-white text-[11px] font-semibold rounded hover:bg-red-700 transition-colors shadow-sm whitespace-nowrap"
+                >
+                  Retry Assessment
+                </button>
+              </div>
             )}
           </div>
         </div>
