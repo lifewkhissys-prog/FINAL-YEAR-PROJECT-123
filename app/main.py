@@ -36,14 +36,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Standard Starlette CORSMiddleware configuration with explicit origin allowlist
+# Standard Starlette CORSMiddleware configuration with explicit origin allowlist + Render regex
+import os
 origins = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"]
-if hasattr(settings, "CORS_ORIGINS") and settings.CORS_ORIGINS:
-    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+env_cors = os.getenv("CORS_ORIGINS", "")
+if env_cors:
+    origins.extend([o.strip() for o in env_cors.split(",") if o.strip() and o.strip() != "*"])
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
