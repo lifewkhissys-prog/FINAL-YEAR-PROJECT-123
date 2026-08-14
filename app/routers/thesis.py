@@ -194,12 +194,12 @@ async def list_submissions(
             max_marks = sub_crit_marks.get(r.sub_criterion_id)
             if max_marks is None:
                 continue
+            max_possible += max_marks
             score_val = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
             if score_val is None:
                 unscored += 1
-                continue
-            total_score += score_val
-            max_possible += max_marks
+            else:
+                total_score += score_val
 
         percentage = round((total_score / max_possible * 100), 1) if max_possible > 0 else None
         band = grade_for(percentage)
@@ -440,11 +440,11 @@ async def get_assessment_results(
 
         effective = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
         if sub_c:
+            max_possible += sub_c.max_marks
             if effective is None:
                 unscored += 1
             else:
                 total_score += effective
-                max_possible += sub_c.max_marks
 
         out.append({
             "id": r.id,

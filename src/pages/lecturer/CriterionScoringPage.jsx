@@ -113,19 +113,17 @@ export default function CriterionScoringPage() {
     }
   };
 
-  // An unscored sub-criterion contributes to neither side of the subtotal, so the fraction shown
-  // describes only what was actually assessed.
   const scoredResults = results.filter(r => {
     const v = overrideScores[r.sub_criterion_id] !== undefined ? overrideScores[r.sub_criterion_id] : r.ai_score;
     return v !== null && v !== undefined && !Number.isNaN(v);
   });
 
-  const chapterSubtotal = scoredResults.reduce((acc, r) => {
+  const chapterSubtotal = results.reduce((acc, r) => {
     const scoreVal = overrideScores[r.sub_criterion_id] !== undefined ? overrideScores[r.sub_criterion_id] : r.ai_score;
     return acc + (scoreVal || 0);
   }, 0);
 
-  const chapterMaxTotal = scoredResults.reduce((acc, r) => acc + (r.max_marks || 0), 0);
+  const chapterMaxTotal = results.reduce((acc, r) => acc + (r.max_marks || 0), 0);
   const unscoredCount = results.length - scoredResults.length;
 
   return (
