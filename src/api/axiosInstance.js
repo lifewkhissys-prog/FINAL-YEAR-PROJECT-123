@@ -22,7 +22,9 @@ export async function authFetch(url, options = {}) {
     ...(options.headers || {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
-  return await fetch(url, { ...options, headers });
+  const baseURL = import.meta.env.VITE_API_BASE_URL || '';
+  const fullUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `${baseURL}${url}`;
+  return await fetch(fullUrl, { ...options, headers });
 }
 
 export async function safeJson(res) {
