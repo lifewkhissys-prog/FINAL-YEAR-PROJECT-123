@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
+import useAuthStore from '../store/authStore';
 
 // Auth Pages
 const LoginPage = React.lazy(() => import('../pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
@@ -25,6 +26,22 @@ const PageLoader = () => (
   </div>
 );
 
+function ProtectedRoute({ children }) {
+  const { isAuthenticated, user, logout } = useAuthStore();
+  const location = useLocation();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (user?.role !== 'lecturer') {
+    logout();
+    return <Navigate to="/login" state={{ error: 'Access Denied: Thesis Assessor is strictly reserved for academic supervisors and lecturers.' }} replace />;
+  }
+
+  return children;
+}
+
 export function AppRouter() {
   const location = useLocation();
 
@@ -41,13 +58,15 @@ export function AppRouter() {
           <Route path="/dashboard" element={<Navigate to="/thesis/dashboard" replace />} />
           <Route path="/lecturer/dashboard" element={<Navigate to="/thesis/dashboard" replace />} />
           <Route path="/student/dashboard" element={<Navigate to="/thesis/dashboard" replace />} />
-          <Route path="/thesis/dashboard" element={<SupervisorDashboardPage />} />
-          <Route path="/thesis/upload" element={<UploadThesisPage />} />
-          <Route path="/thesis/submission/:id/structure" element={<StructureMappingPage />} />
-          <Route path="/thesis/submission/:id/scoring" element={<CriterionScoringPage />} />
-          <Route path="/thesis/submission/:id/verification" element={<VerificationCheckPage />} />
-          <Route path="/thesis/submission/:id/report" element={<FinalNarrativeReportPage />} />
-          <Route path="/thesis/rubric" element={<RubricEditorPage />} />
+
+          {/* Protected Thesis Assessor Routes */}
+          <Route path="/thesis/dashboard" element={<ProtectedRoute><SupervisorDashboardPage /></ProtectedRoute>} />
+          <Route path="/thesis/upload" element={<ProtectedRoute><UploadThesisPage /></ProtectedRoute>} />
+          <Route path="/thesis/submission/:id/structure" element={<ProtectedRoute><StructureMappingPage /></ProtectedRoute>} />
+          <Route path="/thesis/submission/:id/scoring" element={<ProtectedRoute><CriterionScoringPage /></ProtectedRoute>} />
+          <Route path="/thesis/submission/:id/verification" element={<ProtectedRoute><VerificationCheckPage /></ProtectedRoute>} />
+          <Route path="/thesis/submission/:id/report" element={<ProtectedRoute><FinalNarrativeReportPage /></ProtectedRoute>} />
+          <Route path="/thesis/rubric" element={<ProtectedRoute><RubricEditorPage /></ProtectedRoute>} />
 
           {/* Legacy fallback */}
           <Route path="/lecturer/thesis-critique" element={<Navigate to="/thesis/dashboard" replace />} />
@@ -57,3 +76,4 @@ export function AppRouter() {
     </AnimatePresence>
   );
 }
+

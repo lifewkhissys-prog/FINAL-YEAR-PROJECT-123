@@ -1,9 +1,17 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import useAuthStore from '../store/authStore';
 
 export default function NavigationHeader() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, logout } = useAuthStore();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const navLinks = [
     { name: 'Dashboard', path: '/thesis/dashboard', icon: 'dashboard' },
@@ -72,6 +80,13 @@ export default function NavigationHeader() {
               </Link>
             );
           })}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 rounded-lg w-full text-left"
+          >
+            <span className="material-symbols-outlined text-lg">logout</span>
+            <span>Sign Out</span>
+          </button>
         </nav>
       )}
 
@@ -82,11 +97,19 @@ export default function NavigationHeader() {
             KNUST
           </div>
           <div className="text-left">
-            <p className="text-xs font-bold text-primary">Dr. Academic Supervisor</p>
-            <p className="text-[10px] text-on-surface-variant font-medium">Department of Computer Engineering</p>
+            <p className="text-xs font-bold text-primary">{user?.name || 'Dr. Academic Supervisor'}</p>
+            <p className="text-[10px] text-on-surface-variant font-medium">{user?.email || 'Department of Computer Engineering'}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            title="Sign Out"
+            className="ml-2 p-1.5 text-on-surface-variant hover:text-red-600 hover:bg-surface-container rounded-full transition-colors flex items-center justify-center"
+          >
+            <span className="material-symbols-outlined text-lg">logout</span>
+          </button>
         </div>
       </div>
     </header>
   );
 }
+
