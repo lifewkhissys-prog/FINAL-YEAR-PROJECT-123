@@ -64,7 +64,10 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"]
 app.include_router(thesis.router)
 app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions"])
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
     return {"status": "ok"}
+
+
 
