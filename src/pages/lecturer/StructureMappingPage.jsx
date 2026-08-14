@@ -441,19 +441,46 @@ export default function StructureMappingPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {plagiarismData.section_checks.map((chk, idx) => (
-                <div key={idx} className="p-4 bg-surface-container-low rounded-lg border border-surface-container flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-primary capitalize">{chk.section_name.replace('_', ' ')}</p>
-                    <p className="text-xs text-on-surface-variant">Provider: {chk.provider}</p>
+                <div key={idx} className="p-4 bg-surface-container-low rounded-lg border border-surface-container space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-primary capitalize">{chk.section_name.replace('_', ' ')}</p>
+                      <p className="text-xs text-on-surface-variant">Engine: {chk.method || chk.provider}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-base font-bold ${
+                        chk.similarity_percentage > 20 ? 'text-red-600' : 'text-emerald-700'
+                      }`}>
+                        {chk.similarity_percentage}%
+                      </span>
+                      <p className="text-[11px] text-on-surface-variant">similarity</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`text-base font-bold ${
-                      chk.similarity_percentage > 20 ? 'text-red-600' : 'text-emerald-700'
-                    }`}>
-                      {chk.similarity_percentage}%
-                    </span>
-                    <p className="text-[11px] text-on-surface-variant">similarity</p>
-                  </div>
+
+                  {chk.matched_sources && chk.matched_sources.length > 0 && (
+                    <div className="border-t border-surface-container pt-2.5 space-y-2">
+                      <span className="text-[11px] font-bold text-primary uppercase tracking-wider block">Matched Evidence Sources ({chk.matched_sources.length})</span>
+                      {chk.matched_sources.map((src, sIdx) => (
+                        <div key={sIdx} className="p-2.5 bg-white rounded-lg border border-surface-container-highest text-xs space-y-1 shadow-2xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <a
+                              href={src.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-bold text-primary hover:underline truncate flex-1 text-xs"
+                              title={src.source_url}
+                            >
+                              🔗 {src.source_url}
+                            </a>
+                            <span className="font-bold text-emerald-700 text-[11px] bg-emerald-50 px-2 py-0.5 rounded-full shrink-0">{src.similarity}% match</span>
+                          </div>
+                          <p className="text-on-surface-variant text-[11px] leading-snug italic font-mono bg-surface-container-lowest p-1.5 rounded">
+                            "{src.matched_text}"
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
