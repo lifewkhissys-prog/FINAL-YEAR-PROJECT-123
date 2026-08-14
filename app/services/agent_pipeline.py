@@ -342,8 +342,9 @@ TEXT OF THE CHAPTER TO AUDIT:
 INSTRUCTIONS:
 For EACH sub-criterion listed above:
 1. Hunt for direct, verbatim quote excerpts from the chapter text that serve as positive evidence.
-2. If evidence is lacking or inadequate for the {degree_level.upper()} level, state a candid, specific gap_description explaining exactly what is missing.
-3. Be rigorous: DO NOT invent evidence or make superficial praise. Quote verbatim.
+2. If evidence is lacking or inadequate for the {degree_level.upper()} level, state a candid, specific gap_description explaining exactly what missing topic, dataset, equation, or section element is absent.
+3. ANTI-BOILERPLATE RULE: DO NOT use generic template phrases such as "Lack of test cases or evaluation evidence" or "Lack of clear and consistent referencing style". The gap_description MUST name the exact missing section, dataset, figure, table, or topic from this chapter.
+4. Be rigorous: DO NOT invent evidence or make superficial praise. Quote verbatim.
 
 Respond ONLY in this JSON format:
 {{
@@ -352,7 +353,7 @@ Respond ONLY in this JSON format:
       "sub_criterion_id": <int>,
       "evidence_found": true or false,
       "quotes": ["verbatim quote 1", "verbatim quote 2"],
-      "gap_description": "candid explanation of gap or defect, or empty if excellent"
+      "gap_description": "specific explanation referencing missing chapter elements, or empty if excellent"
     }}
   ]
 }}
@@ -406,12 +407,6 @@ async def run_scoring(
     One batched LLM call over all gathered evidence from all chapters at once,
     calibrating all scores consistently against each other in one pass.
     """
-    # TODO: evaluate whether Stage 4 scoring benefits from a stronger reasoning
-    # model than Stage 3 extraction. The fix-spec suggests it does (scoring is
-    # judgement-shaped, extraction is retrieval-shaped), but v1 uses the same
-    # model for both via GROQ_SCORER_MODEL for velocity.
-
-    # Compact evidence summary to stay well within Groq 6000 TPM limit
     evidence_payload = []
     for ev in all_evidence:
         quotes = [q[:180] for q in ev.get("quotes", [])[:2]]
@@ -457,7 +452,8 @@ GATHERED EVIDENCE FROM THESIS CHAPTERS:
 INSTRUCTIONS:
 1. For each sub_criterion_id, assign a score between 0.0 and max_marks.
 2. Ground your score strictly on the evidence quotes and gap descriptions above.
-3. Provide a 1-2 sentence justification citing specific evidence.
+3. Provide a 1-2 sentence justification that MUST explicitly name specific technical terms, dataset names, section titles, or verbatim quotes from the gathered evidence.
+4. BANNED GENERIC JUSTIFICATIONS: You are strictly forbidden from outputting generic filler justifications such as "Evaluated based on chapter evidence", "Lack of test cases or evaluation evidence", or "Lack of clear and consistent referencing style". Every justification must name concrete thesis details.
 
 Respond ONLY in this JSON format:
 {{
@@ -465,7 +461,7 @@ Respond ONLY in this JSON format:
     {{
       "sub_criterion_id": <int>,
       "score": <float>,
-      "justification": "<string justification citing evidence>"
+      "justification": "<string justification citing specific evidence and domain terms>"
     }}
   ]
 }}
@@ -492,10 +488,17 @@ Respond ONLY in this JSON format:
                 score_val = 0.0
             score_val = max(0.0, min(float(sc.max_marks), score_val))
 
-            justification = str(s_item.get("justification", "")).strip() or "Evaluated based on chapter evidence."
             ev_match = next((e for e in all_evidence if e.get("sub_criterion_id") == sc.id), {})
             quotes = ev_match.get("quotes", [])
-            cited_text = quotes[0] if quotes else ev_match.get("gap_description", "")
+            gap_desc = ev_match.get("gap_description", "")
+
+            default_just = (
+                f"Score of {score_val}/{sc.max_marks} assigned based on verbatim quotes in {sc.chapter_target} chapter."
+                if quotes else
+                f"Score of {score_val}/{sc.max_marks} assigned due to missing elements in {sc.chapter_target} chapter: {gap_desc[:120]}"
+            )
+            justification = str(s_item.get("justification", "")).strip() or default_just
+            cited_text = quotes[0] if quotes else gap_desc
 
             results.append({
                 "sub_criterion_id": sc.id,
@@ -620,12 +623,18 @@ STRICT CONSTRAINTS (CRITICAL):
 2. You may NOT state a strength unless it is backed by an actual verbatim quote from the evidence above.
 3. Every single bullet point must be traceable to a specific chapter evidence item.
 4. DO NOT mention font family (e.g. Times New Roman) or line spacing (e.g. 1.5 spacing) compliance, as styling metadata is unverified.
-5. BANNED PHRASES — DO NOT USE ANY OF THE FOLLOWING GENERIC FILLER PHRASES:
+5. BANNED GENERIC FILLER PHRASES — YOU ARE STRICTLY FORBIDDEN FROM USING ANY OF THE FOLLOWING:
+   - "Lack of test cases or evaluation evidence"
+   - "Lack of clear and consistent referencing style"
    - "lacks a nuanced analysis"
    - "fails to provide a clear explanation"
    - "lacks a clear discussion of future directions"
    - "demonstrates a good grasp of"
-   - any sentence that would be equally true if the thesis topic were swapped with a completely different topic.
+   - "Evaluated based on chapter evidence"
+   - "needs further refinement"
+   - "lacks empirical backing"
+   - any generic sentence that would be equally true if the thesis title and dataset were swapped with a completely different topic.
+6. SPECIFICITY MANDATE: Every weakness, gap, and recommendation MUST name the exact dataset (e.g., CERT r4.2, MNIST, survey size), algorithm/method name (e.g., rule-based risk scoring, SVM, Random Forest), or section context from the gathered evidence above.
 
 REPORT STRUCTURE (You MUST generate all 8 numbered sections):
 # Comprehensive Thesis Evaluation Report
@@ -645,6 +654,8 @@ Provide specific critiques for Chapter 1 (Introduction), Chapter 2 (Literature R
 
 ## 5. Methodological & Analytical Rigour Assessment
 Detailed review of research design, data collection, analytical tools, and statistical/experimental validity based strictly on gathered evidence.
+
+strictly on gathered evidence.
 
 ## 6. Presentation & Formatting Audit
 Report only verified mechanical facts (word count: {doc_structure.get('metadata', {}).get('word_count_total', 0):,}, TOC duplicates, bibliography citations).
