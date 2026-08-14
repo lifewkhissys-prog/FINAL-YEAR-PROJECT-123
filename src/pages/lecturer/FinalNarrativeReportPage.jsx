@@ -8,7 +8,7 @@ export default function FinalNarrativeReportPage() {
   const navigate = useNavigate();
 
   const [reportText, setReportText] = useState('');
-  const [recommendation, setRecommendation] = useState('Pass (Minor Revisions Required)');
+  const [recommendation, setRecommendation] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -148,11 +148,11 @@ export default function FinalNarrativeReportPage() {
               onChange={(e) => setRecommendation(e.target.value)}
               className="bg-surface-container-low border border-outline-variant rounded-lg px-4 py-2 text-sm font-semibold text-primary outline-none focus:border-primary"
             >
-              <option value="Pass (Unconditional)">Pass — no corrections required</option>
-              <option value="Pass (Minor Revisions Required)">Pass — minor corrections required</option>
-              <option value="Conditionally Acceptable (Major Revisions)">Conditionally acceptable — major corrections required</option>
-              <option value="Referred (Re-assessment, capped at 60)">Referred — may be revised for re-assessment (mark capped at 60)</option>
-              <option value="Fail (Resubmission Required)">Fail</option>
+              <option value="Pass (Unconditional)">Pass (Unconditional) — no corrections required</option>
+              <option value="Pass (Conditional)">Pass (Conditional) — minor typographical/formatting corrections</option>
+              <option value="Pass (Minor Revision)">Pass (Minor Revision) — minor technical corrections required</option>
+              <option value="Referred (Re-assessment capped at 60%)">Referred — major revision required (capped at 60%)</option>
+              <option value="Fail (Resubmission Required)">Fail — serious conceptual/empirical deficiencies</option>
             </select>
           </div>
         </div>

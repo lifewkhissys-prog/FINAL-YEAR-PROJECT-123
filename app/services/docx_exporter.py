@@ -8,6 +8,8 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
 
+from app.services.grading_scale import grade_for
+
 def set_cell_background(cell, fill_color: str):
     """Set background shading color of a table cell (e.g. '0F2942' for deep navy)."""
     tcPr = cell._element.get_or_add_tcPr()
@@ -30,29 +32,43 @@ def generate_thesis_docx_report(submission, results, summary, narrative_text: st
     """
     doc = Document()
 
-    # Set 1-inch margins on all sides
+    # Define standard margins (1 inch)
     for section in doc.sections:
         section.top_margin = Inches(1.0)
         section.bottom_margin = Inches(1.0)
         section.left_margin = Inches(1.0)
         section.right_margin = Inches(1.0)
 
-    # 1. Main Document Header (Matching sample document)
-    h_top = doc.add_paragraph()
-    r_h_top = h_top.add_run(f"CRITICAL ASSESSMENT REPORT ON {(submission.degree_level or 'THESIS').upper()} THESIS")
-    r_h_top.font.name = "Arial"
-    r_h_top.font.size = Pt(14)
-    r_h_top.font.bold = True
-    r_h_top.font.color.rgb = RGBColor(15, 41, 66)  # Deep Navy
+    # 1. Document Header Banner
+    header_p = doc.add_paragraph()
+    header_p.paragraph_format.space_before = Pt(0)
+    header_p.paragraph_format.space_after = Pt(4)
+    r_h = header_p.add_run("KWAME NKRUMAH UNIVERSITY OF SCIENCE AND TECHNOLOGY")
+    r_h.font.name = "Arial"
+    r_h.font.size = Pt(15)
+    r_h.font.bold = True
+    r_h.font.color.rgb = RGBColor(15, 41, 66)
 
-    h_sub = doc.add_paragraph()
-    r_h_sub = h_sub.add_run("Supervisor’s Review and Corrective Guidance to the Supervisee")
+    header_sub = doc.add_paragraph()
+    header_sub.paragraph_format.space_before = Pt(0)
+    header_sub.paragraph_format.space_after = Pt(18)
+    r_h_sub = header_sub.add_run("School of Graduate Studies — Critical Thesis Assessment Report")
     r_h_sub.font.name = "Arial"
     r_h_sub.font.size = Pt(11)
     r_h_sub.font.italic = True
     r_h_sub.font.color.rgb = RGBColor(90, 90, 90)
 
     doc.add_paragraph()
+
+    # Determine dynamic recommendation based on score if submission.supervisor_recommendation is None
+    rec = submission.supervisor_recommendation
+    if not rec:
+        scored = [r for r in (results or []) if getattr(r, 'ai_score', None) is not None]
+        total_obtained = sum(r.ai_score for r in scored) if scored else 0
+        total_max = sum(r.sub_criterion.max_marks for r in scored if hasattr(r, 'sub_criterion') and r.sub_criterion) if scored else 0
+        pct = (total_obtained / total_max * 100.0) if total_max > 0 else None
+        band = grade_for(pct)
+        rec = band.get("recommendation_detail", "Assessment incomplete")
 
     # 2. Metadata Table
     table = doc.add_table(rows=6, cols=2)
@@ -65,7 +81,7 @@ def generate_thesis_docx_report(submission, results, summary, narrative_text: st
         ("Institution", f"{submission.institution or 'Kwame Nkrumah University of Science and Technology, Kumasi'}"),
         ("Thesis Title", submission.title or "N/A"),
         ("Assessment Type", "Critical Supervisor Assessment"),
-        ("Overall Recommendation", submission.supervisor_recommendation or "Acceptable in concept, but corrections are required before final submission")
+        ("Overall Recommendation", rec)
     ]
 
     for idx, (label, val) in enumerate(metadata):

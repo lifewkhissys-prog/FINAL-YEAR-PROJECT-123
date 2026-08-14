@@ -225,7 +225,7 @@ async def list_submissions(
             "error_detail": s.error_detail,
             "pipeline_step": s.pipeline_step,
             "pipeline_progress": s.pipeline_progress,
-            "supervisor_recommendation": s.supervisor_recommendation
+            "supervisor_recommendation": s.supervisor_recommendation or band.get("recommendation")
         })
     return out
 
@@ -610,10 +610,19 @@ async def get_narrative_report(
     check_submission_access(sub, current_user)
 
     report_text = sub.narrative_report_edited or sub.narrative_report
+    rec = sub.supervisor_recommendation
+    if not rec:
+        scored = [r for r in sub.assessment_results if r.ai_score is not None]
+        total_obtained = sum(r.ai_score for r in scored) if scored else 0
+        total_max = sum(r.sub_criterion.max_marks for r in scored if r.sub_criterion) if scored else 0
+        pct = (total_obtained / total_max * 100.0) if total_max > 0 else None
+        band = grade_for(pct)
+        rec = band.get("recommendation")
+
     return {
         "status": sub.status,
         "narrative_report": report_text,
-        "supervisor_recommendation": sub.supervisor_recommendation
+        "supervisor_recommendation": rec
     }
 
 

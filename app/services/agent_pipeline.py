@@ -936,12 +936,21 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                     doc_structure=doc_structure
                 )
 
+            # Compute score percentage and set supervisor recommendation dynamically based on score
+            scored = [r for r in scoring_results if r.get("ai_score") is not None]
+            total_obtained = sum(r["ai_score"] for r in scored)
+            total_max = sum(r["max_marks"] for r in scored)
+            pct = (total_obtained / total_max * 100.0) if total_max > 0 else None
+            band = grade_for(pct)
+            submission.supervisor_recommendation = band["recommendation_detail"]
+
             submission.narrative_report = narrative_report
             submission.pipeline_step = "completed"
             submission.pipeline_progress = 100
             submission.status = "completed"
             await db.commit()
             logger.info("Thesis assessment pipeline completed successfully for submission %s.", submission_id)
+
 
         except Exception as e:
             logger.exception("Thesis assessment pipeline failed for submission %s", submission_id)
