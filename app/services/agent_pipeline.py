@@ -409,12 +409,12 @@ async def run_scoring(
     """
     evidence_payload = []
     for ev in all_evidence:
-        quotes = [q[:180] for q in ev.get("quotes", [])[:2]]
+        quotes = [q[:800] for q in ev.get("quotes", [])[:2]]
         evidence_payload.append({
             "sub_criterion_id": ev.get("sub_criterion_id"),
             "target": ev.get("chapter_target"),
             "quotes": quotes,
-            "gap": (ev.get("gap_description") or "")[:200]
+            "gap": (ev.get("gap_description") or "")[:400]
         })
     evidence_summary = json.dumps(evidence_payload, separators=(',', ':'))
 
@@ -498,7 +498,7 @@ Respond ONLY in this JSON format:
                 f"Score of {score_val}/{sc.max_marks} assigned due to missing elements in {sc.chapter_target} chapter: {gap_desc[:120]}"
             )
             justification = str(s_item.get("justification", "")).strip() or default_just
-            cited_text = quotes[0] if quotes else gap_desc
+            cited_text = " \n\n".join(quotes[:2]) if quotes else gap_desc
 
             results.append({
                 "sub_criterion_id": sc.id,

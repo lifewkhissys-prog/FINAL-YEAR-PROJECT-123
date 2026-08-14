@@ -27,6 +27,7 @@ export default function CriterionScoringPage() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [overrideScores, setOverrideScores] = useState({});
+  const [expandedContext, setExpandedContext] = useState({});
 
   // Sync active chapter from query parameter if it changes
   useEffect(() => {
@@ -263,16 +264,36 @@ export default function CriterionScoringPage() {
                       </div>
                     </div>
 
-                    {/* Cited Evidence Quote */}
-                    <div className="p-4 bg-slate-50 border-l-4 border-primary rounded-r-lg space-y-1">
-                      <span className="text-[11px] font-bold text-primary uppercase tracking-wider block">Retrieved Thesis Evidence</span>
-                      <p className="text-xs text-slate-800 italic leading-relaxed">"{item.cited_text}"</p>
+                    {/* Cited Evidence Quote & Context Inspection */}
+                    <div className="p-4 bg-slate-50 border-l-4 border-primary rounded-r-lg space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-primary uppercase tracking-wider flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm text-primary">pin_drop</span>
+                          <span>Grounded Thesis Evidence ({activeChapter.replace('_', ' ').toUpperCase()})</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedContext(prev => ({ ...prev, [item.sub_criterion_id]: !prev[item.sub_criterion_id] }))}
+                          className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 bg-white px-2 py-1 rounded border border-outline-variant/40"
+                        >
+                          <span className="material-symbols-outlined text-sm">
+                            {expandedContext[item.sub_criterion_id] ? 'unfold_less' : 'unfold_more'}
+                          </span>
+                          <span>{expandedContext[item.sub_criterion_id] ? 'Collapse Block' : 'Inspect Full Excerpt'}</span>
+                        </button>
+                      </div>
+
+                      <div className={`text-xs text-slate-900 leading-relaxed font-sans whitespace-pre-wrap p-2 bg-white rounded border border-slate-200 shadow-2xs ${
+                        expandedContext[item.sub_criterion_id] ? 'max-h-96 overflow-y-auto' : 'max-h-28 overflow-y-auto'
+                      }`}>
+                        "{item.cited_text}"
+                      </div>
                     </div>
 
                     {/* AI Justification */}
-                    <div className="text-xs text-on-surface-variant leading-relaxed">
-                      <span className="font-semibold text-primary">AI Justification: </span>
-                      <span>{item.ai_justification}</span>
+                    <div className="text-xs text-on-surface-variant leading-relaxed p-3 bg-surface-container-low rounded-lg border border-surface-container">
+                      <span className="font-bold text-primary block mb-0.5">AI Examiner Justification & Domain Analysis:</span>
+                      <span className="text-slate-800 font-medium">{item.ai_justification}</span>
                     </div>
 
                     {/* Supervisor Override Slider */}
