@@ -230,7 +230,38 @@ async def list_submissions(
     return out
 
 
+@router.delete("/submissions/{id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/thesis-submissions/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_submission(
+
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Delete a thesis submission and all associated assessment records."""
+    res = await db.execute(select(ThesisSubmission).where(ThesisSubmission.id == id))
+    sub = res.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Thesis submission with ID {id} not found."
+        )
+
+    check_submission_access(sub, current_user)
+
+    if sub.file_path and os.path.exists(sub.file_path):
+        try:
+            os.remove(sub.file_path)
+        except Exception as e:
+            print(f"Warning: Could not remove uploaded file {sub.file_path}: {e}")
+
+    await db.delete(sub)
+    await db.commit()
+    return None
+
+
 @router.post("/submissions")
+
 async def create_submission(
     student_name: str = Form(...),
     title: str = Form(...),

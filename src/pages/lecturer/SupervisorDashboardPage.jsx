@@ -26,6 +26,23 @@ export default function SupervisorDashboardPage() {
     loadSubmissions();
   }, []);
 
+  const handleDeleteSubmission = async (subId, title) => {
+    if (window.confirm(`Are you sure you want to delete "${title || 'this thesis submission'}"? This action cannot be undone.`)) {
+      try {
+        const res = await authFetch(`/api/submissions/${subId}`, { method: 'DELETE' });
+        if (res.ok || res.status === 204) {
+          loadSubmissions();
+        } else {
+          alert('Failed to delete thesis submission.');
+        }
+      } catch (err) {
+        console.error("Failed to delete thesis submission:", err);
+        alert('Failed to delete thesis submission.');
+      }
+    }
+  };
+
+
   // Auto-poll every 3 seconds while any thesis is actively processing
   useEffect(() => {
     const hasActiveProcessing = submissions.some(
@@ -294,20 +311,28 @@ export default function SupervisorDashboardPage() {
                               <span>Live Progress</span>
                             </button>
                           ) : (
-                            <>
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => navigate(`/thesis/submission/${sub.id}/scoring`)}
-                                className="px-3 py-1 bg-surface-container-low border border-outline-variant text-primary text-[11px] font-semibold rounded hover:bg-surface-container transition-colors"
+                                className="px-2.5 py-1 bg-surface-container-low border border-outline-variant text-primary text-[11px] font-semibold rounded hover:bg-surface-container transition-colors"
                               >
                                 Score
                               </button>
                               <button
                                 onClick={() => navigate(`/thesis/submission/${sub.id}/report`)}
-                                className="px-3 py-1 bg-primary text-white text-[11px] font-semibold rounded hover:bg-primary-container transition-colors"
+                                className="px-2.5 py-1 bg-primary text-white text-[11px] font-semibold rounded hover:bg-primary-container transition-colors"
                               >
                                 Report
                               </button>
-                            </>
+                              <button
+                                onClick={() => handleDeleteSubmission(sub.id, sub.title)}
+                                className="px-2 py-1 bg-red-50 text-red-700 border border-red-200 text-[11px] font-semibold rounded hover:bg-red-100 transition-colors"
+                                title="Delete thesis submission"
+                              >
+                                Delete
+                              </button>
+                            </div>
+
                           )}
                         </td>
                       </tr>
