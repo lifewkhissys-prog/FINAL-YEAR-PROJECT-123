@@ -294,6 +294,37 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
         caption = lines[0] if lines else f"Figure {idx}"
         figures.append({"id": f"fig{idx}", "caption": caption[:150]})
 
+    # Extract & analyze images using Groq LLaMA 3.2 Vision API (capped at 5 figures)
+    if file_path and file_path.lower().endswith(".pdf") and os.path.exists(file_path):
+        try:
+            import fitz
+            from app.services.vision_service import analyze_figure_image_sync
+            doc = fitz.open(file_path)
+            extracted_count = 0
+            for page_num in range(len(doc)):
+                if extracted_count >= 5:
+                    break
+                page = doc[page_num]
+                image_list = page.get_images()
+                for img_info in image_list:
+                    if extracted_count >= 5:
+                        break
+                    xref = img_info[0]
+                    base_image = doc.extract_image(xref)
+                    image_bytes = base_image.get("image")
+                    if image_bytes and len(image_bytes) > 5000:
+                        caption_hint = figures[extracted_count]["caption"] if extracted_count < len(figures) else f"Figure on page {page_num+1}"
+                        analysis = analyze_figure_image_sync(image_bytes, caption_hint)
+                        if analysis:
+                            if extracted_count < len(figures):
+                                figures[extracted_count]["vision_analysis"] = analysis
+                            else:
+                                figures.append({"id": f"fig{extracted_count+1}", "caption": caption_hint, "vision_analysis": analysis})
+                            extracted_count += 1
+        except Exception as e:
+            print(f"Vision figure extraction notice: {e}")
+
+
     # Extract section headings for TOC duplicate detection
     toc_entries = []
     heading_sec_re = re.compile(r"^\s*(\d+(?:\.\d+)+)\s+(.+)$")
