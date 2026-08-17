@@ -15,7 +15,6 @@ const CHAPTERS = [
   { key: 'references', label: '8. References', icon: 'format_quote' }
 ];
 
-
 export default function CriterionScoringPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -28,6 +27,7 @@ export default function CriterionScoringPage() {
   const [activeChapter, setActiveChapter] = useState(initialChapter);
   const [results, setResults] = useState([]);
   const [chapterText, setChapterText] = useState('');
+  const [figures, setFigures] = useState([]);
   const [loadingResults, setLoadingResults] = useState(true);
   const [loadingText, setLoadingText] = useState(true);
   const [overrideScores, setOverrideScores] = useState({});
@@ -46,7 +46,7 @@ export default function CriterionScoringPage() {
     }
   }, [location.search]);
 
-  // Load Chapter Results & Chapter Text
+  // Load Chapter Results, Chapter Text, and Extracted Figure Metadata
   useEffect(() => {
     async function loadData() {
       setLoadingResults(true);
@@ -55,9 +55,10 @@ export default function CriterionScoringPage() {
       setHighlightedSubCritId(null);
 
       try {
-        const [resultsRes, textRes] = await Promise.all([
+        const [resultsRes, textRes, figuresRes] = await Promise.all([
           authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`),
-          authFetch(`/api/submissions/${id}/chapter-text/${activeChapter}`)
+          authFetch(`/api/submissions/${id}/chapter-text/${activeChapter}`),
+          authFetch(`/api/submissions/${id}/figures`)
         ]);
 
         if (resultsRes.ok) {
@@ -80,6 +81,11 @@ export default function CriterionScoringPage() {
         if (textRes.ok) {
           const tData = await safeJson(textRes);
           if (tData) setChapterText(tData.text || '');
+        }
+
+        if (figuresRes.ok) {
+          const figData = await safeJson(figuresRes);
+          if (figData && figData.figures) setFigures(figData.figures);
         }
       } catch (err) {
         console.error("Error loading chapter evaluation data:", err);
@@ -161,6 +167,8 @@ export default function CriterionScoringPage() {
 
   const textParagraphs = chapterText ? chapterText.split('\n\n').filter(p => p.strip ? p.strip() : p.trim()) : [];
 
+  const baseURL = import.meta.env.VITE_API_BASE_URL || '';
+
   return (
     <div className="min-h-screen bg-background text-on-surface font-body flex flex-col">
       <NavigationHeader />
@@ -210,13 +218,13 @@ export default function CriterionScoringPage() {
           </div>
         </aside>
 
-        {/* Center Canvas: Grammarly-style Interactive Document Reader */}
+        {/* Center Canvas: Grammarly-style Interactive Document Reader with Inline Figures */}
         <section className="w-full lg:w-1/2 bg-white border border-surface-container-highest rounded-xl p-6 shadow-sm overflow-y-auto flex flex-col" ref={documentReaderRef}>
           <div className="flex items-center justify-between border-b border-surface-container-high pb-3 mb-4 shrink-0">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-lg">article</span>
               <h2 className="font-serif text-lg font-bold text-primary capitalize">
-                {activeChapter.replace('_', ' ')} Manuscript Context
+                {activeChapter === 'all' ? 'Full Manuscript' : activeChapter.replace('_', ' ')} Reader Canvas
               </h2>
             </div>
             {activeQuoteHighlight && (
@@ -232,11 +240,11 @@ export default function CriterionScoringPage() {
 
           {loadingText ? (
             <div className="py-16 text-center text-on-surface-variant text-xs flex-grow flex items-center justify-center">
-              <span>Loading manuscript chapter text...</span>
+              <span>Loading manuscript text & figures...</span>
             </div>
           ) : textParagraphs.length === 0 ? (
             <div className="py-16 text-center text-on-surface-variant text-xs flex-grow flex items-center justify-center italic">
-              <span>No extracted manuscript text available for this chapter section.</span>
+              <span>No extracted manuscript text available for this section.</span>
             </div>
           ) : (
             <div className="space-y-4 text-xs leading-relaxed text-slate-800 font-serif">
@@ -246,6 +254,14 @@ export default function CriterionScoringPage() {
                   cleanPara.toLowerCase().includes(activeQuoteHighlight.toLowerCase()) ||
                   activeQuoteHighlight.toLowerCase().includes(cleanPara.slice(0, 50).toLowerCase())
                 );
+
+                // Check if paragraph mentions a figure (e.g. Figure 4.1 or Fig. 2)
+                const figMatch = cleanPara.match(/(?:Figure|Fig\.)\s+(\d+(?:\.\d+)?)/i);
+                let matchedFigIdx = -1;
+                if (figMatch && figures.length > 0) {
+                  const figNum = figMatch[1];
+                  matchedFigIdx = figures.findIndex(f => f.caption && f.caption.includes(figNum));
+                }
 
                 if (isMatchingHighlight) {
                   return (
@@ -264,11 +280,91 @@ export default function CriterionScoringPage() {
                 }
 
                 return (
-                  <p key={pIdx} className="text-slate-800 leading-relaxed font-serif text-xs">
-                    {para}
-                  </p>
+                  <React.Fragment key={pIdx}>
+                    <p className="text-slate-800 leading-relaxed font-serif text-xs">
+                      {para}
+                    </p>
+
+                    {/* Inline Figure Preview Card when figure reference is detected */}
+                    {matchedFigIdx !== -1 && (
+                      <div className="my-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 font-sans shadow-2xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-primary flex items-center gap-1">
+                            <span className="material-symbols-outlined text-sm text-primary">image</span>
+                            <span>{figures[matchedFigIdx].caption || `Figure ${matchedFigIdx+1}`}</span>
+                          </span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider bg-slate-200 text-slate-700 px-2 py-0.5 rounded">
+                            Embedded Manuscript Figure #{matchedFigIdx+1}
+                          </span>
+                        </div>
+
+                        {/* Extracted Figure Image Stream */}
+                        <div className="bg-white p-2 rounded-lg border border-slate-200 flex items-center justify-center max-h-72 overflow-hidden">
+                          <img
+                            src={`${baseURL}/api/submissions/${id}/figures/${matchedFigIdx}/image`}
+                            alt={figures[matchedFigIdx].caption || "Thesis Figure"}
+                            className="max-h-64 object-contain rounded"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        </div>
+
+                        {/* Groq Vision AI Analysis Badge */}
+                        {figures[matchedFigIdx].vision_analysis && (
+                          <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-lg text-[11px]">
+                            <span className="font-bold text-amber-900 block mb-0.5 text-[10px] uppercase tracking-wider flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs text-amber-700">visibility</span>
+                              <span>Groq Vision AI Figure Analysis:</span>
+                            </span>
+                            <p className="text-amber-950 font-sans text-[11px] leading-relaxed">
+                              {figures[matchedFigIdx].vision_analysis}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </React.Fragment>
                 );
               })}
+
+              {/* Figure Gallery at bottom of document if figures exist and weren't inline matched */}
+              {figures.length > 0 && (
+                <div className="pt-6 border-t border-slate-200 my-6 space-y-4 font-sans">
+                  <h3 className="font-serif text-sm font-bold text-primary flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary text-base">collections</span>
+                    <span>Extracted Document Figures & Groq Vision Analyses ({figures.length})</span>
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    {figures.map((fig, fIdx) => (
+                      <div key={fIdx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between text-xs font-bold text-primary">
+                          <span>{fig.caption || `Figure ${fIdx+1}`}</span>
+                          <span className="text-[9px] bg-slate-200 px-2 py-0.5 rounded text-slate-700 font-mono">Fig #{fIdx+1}</span>
+                        </div>
+                        <div className="bg-white p-2 rounded border flex items-center justify-center max-h-60 overflow-hidden">
+                          <img
+                            src={`${baseURL}/api/submissions/${id}/figures/${fIdx}/image`}
+                            alt={fig.caption || "Extracted Figure"}
+                            className="max-h-52 object-contain rounded"
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        {fig.vision_analysis && (
+                          <p className="text-[11px] bg-amber-50 p-2 rounded text-amber-950 border border-amber-200 leading-snug">
+                            <strong className="font-bold text-amber-900 block text-[10px] uppercase">Vision AI Extraction:</strong>
+                            {fig.vision_analysis}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

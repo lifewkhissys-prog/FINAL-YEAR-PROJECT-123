@@ -3,7 +3,8 @@ import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel, Field
@@ -548,6 +549,64 @@ async def get_chapter_text(
         "chapter_key": chapter_key,
         "text": chunks.get(chapter_key, "")
     }
+
+
+@router.get("/submissions/{id}/figures")
+async def get_submission_figures(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Return list of extracted figures and Vision AI metadata for a thesis submission."""
+    res = await db.execute(select(ThesisSubmission).where(ThesisSubmission.id == id))
+    sub = res.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
+
+    doc_struct = extract_document_structure(sub.full_text, sub.file_path)
+    return {"submission_id": id, "figures": doc_struct.get("figures", [])}
+
+
+@router.get("/submissions/{id}/figures/{img_index}/image")
+async def get_figure_image(
+    id: int,
+    img_index: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Serve raw image bytes for an extracted thesis figure."""
+    res = await db.execute(select(ThesisSubmission).where(ThesisSubmission.id == id))
+    sub = res.scalar_one_or_none()
+    if not sub or not sub.file_path or not os.path.exists(sub.file_path):
+        raise HTTPException(status_code=404, detail="Submission or file not found")
+    check_submission_access(sub, current_user)
+
+    if not sub.file_path.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Image extraction only supported for PDF submissions")
+
+    try:
+        import fitz
+        doc = fitz.open(sub.file_path)
+        extracted_count = 0
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            image_list = page.get_images()
+            for img_info in image_list:
+                xref = img_info[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image.get("image")
+                if image_bytes and len(image_bytes) > 5000:
+                    if extracted_count == img_index:
+                        ext = base_image.get("ext", "png")
+                        mime_type = f"image/{ext}"
+                        return Response(content=image_bytes, media_type=mime_type)
+                    extracted_count += 1
+    except Exception as e:
+        print(f"Error serving figure image: {e}")
+
+    raise HTTPException(status_code=404, detail=f"Figure image index {img_index} not found")
+
 
 
 
