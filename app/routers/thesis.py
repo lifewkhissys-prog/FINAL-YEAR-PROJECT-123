@@ -595,6 +595,40 @@ async def get_figure_image(
     raise HTTPException(status_code=404, detail=f"Figure image index {img_index} not found")
 
 
+@router.get("/submissions/{id}/document")
+async def serve_submission_document(
+    id: int,
+    token: str = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Serve the original uploaded PDF/DOCX file for in-browser viewing.
+    Accepts optional ?token= query parameter for iframe-based authentication.
+    """
+    res = await db.execute(select(ThesisSubmission).where(ThesisSubmission.id == id))
+    sub = res.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
+
+    if not sub.file_path or not os.path.exists(sub.file_path):
+        raise HTTPException(status_code=404, detail="Original document file not available on this server instance.")
+
+    ext = Path(sub.file_path).suffix.lower()
+    media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    filename = f"{sub.student_name}_{sub.title[:30]}{ext}".replace(" ", "_")
+
+    def file_stream():
+        with open(sub.file_path, "rb") as f:
+            while chunk := f.read(64 * 1024):
+                yield chunk
+
+    return StreamingResponse(
+        file_stream(),
+        media_type=media_type,
+        headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
+    )
+
 
 
 
