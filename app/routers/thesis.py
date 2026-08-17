@@ -22,7 +22,7 @@ from app.models.thesis_critique import (
     PlagiarismCheck,
     GradedExample
 )
-from app.services.thesis_parser import parse_thesis_document
+from app.services.thesis_parser import parse_thesis_document, chunk_thesis_by_chapters, extract_document_structure
 from app.services.agent_pipeline import execute_thesis_assessment_pipeline
 from app.services.embeddings import generate_embedding
 from app.services.grading_scale import grade_for
