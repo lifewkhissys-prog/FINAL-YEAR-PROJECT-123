@@ -560,12 +560,13 @@ async def run_narrative_synthesis(
     degree_label = degree_label_map.get(degree_level, "Postgraduate")
 
     rubric_source_map = {
-        "mphil": "KNUST HDR Guide 2016, Appendix 4.4",
-        "phd": "KNUST HDR Guide 2016, Appendix 4.2",
-        "msc": "Departmental adaptation of KNUST HDR Guide 2016 (derived — non-official numeric scheme)",
-        "undergraduate": "Departmental BSc Final Year Project rubric (derived — not in KNUST HDR Guide)"
+        "mphil": "KNUST HDR Guide 2016 (Appendix 4.4)",
+        "phd": "KNUST HDR Guide 2016 (Appendix 4.2)",
+        "msc": "Departmental MSc Thesis Evaluation Rubric",
+        "undergraduate": "Departmental BSc Final Year Project Rubric"
     }
-    rubric_source = rubric_source_map.get(degree_level, "KNUST Standard Rubric")
+    rubric_source = rubric_source_map.get(degree_level, "KNUST Standard Thesis Rubric")
+
 
     ev_lines = []
     for ev in all_evidence:
@@ -635,6 +636,8 @@ STRICT CONSTRAINTS (CRITICAL):
    - "lacks empirical backing"
    - any generic sentence that would be equally true if the thesis title and dataset were swapped with a completely different topic.
 6. SPECIFICITY MANDATE: Every weakness, gap, and recommendation MUST name the exact dataset (e.g., CERT r4.2, MNIST, survey size), algorithm/method name (e.g., rule-based risk scoring, SVM, Random Forest), or section context from the gathered evidence above.
+7. AUTHORITATIVE STUDENT-FACING REPORT MANDATE: Write exclusively as a formal, authoritative academic supervisor report. DO NOT include any AI meta-commentary, internal system data tracking notes, parenthetical disclaimers (e.g., "derived — not in KNUST HDR Guide", "TBD", or "unconfirmed"), or self-referential statements about your confidence or rubric origins. Write purely substantive academic critique that reads as if authored directly by the supervisor.
+
 
 REPORT STRUCTURE (You MUST generate all 8 numbered sections):
 # Comprehensive Thesis Evaluation Report
