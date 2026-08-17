@@ -1,5 +1,11 @@
+import os
 import numpy as np
 from typing import List, Union
+
+# Silence ONNX Runtime GPU discovery warnings on CPU-only cloud servers (e.g. Render)
+os.environ.setdefault("ONNXRUNTIME_EXECUTION_PROVIDERS", '["CPUExecutionProvider"]')
+os.environ.setdefault("ORT_LOGGING_LEVEL", "3")
+
 
 _model = None
 
