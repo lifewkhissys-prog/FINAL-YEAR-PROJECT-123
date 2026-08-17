@@ -99,40 +99,56 @@ async def call_llm_async(
     retries: int = 4,
     temperature: float = 0.2
 ) -> str:
-    """Invokes Groq LLM API dynamically with 429 Rate-Limit retry backoff."""
-    selected_model = model or settings.GROQ_SCORER_MODEL
+    """Invokes Groq LLM API dynamically with 429 Rate-Limit retry backoff and 404 model fallback."""
+    primary_model = model or settings.GROQ_SCORER_MODEL
 
     if not groq_client or not settings.GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is not configured in settings or .env file.")
 
-    for attempt in range(retries):
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
+    candidate_models = [primary_model]
+    for fallback in ["llama-3.3-70b-versatile", "llama3-8b-8192", "llama-3.1-8b-instant", "llama3-70b-8192"]:
+        if fallback not in candidate_models:
+            candidate_models.append(fallback)
 
-            kwargs = {
-                "model": selected_model,
-                "messages": messages,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            }
-            if json_mode:
-                kwargs["response_format"] = {"type": "json_object"}
+    last_error = None
+    for model_name in candidate_models:
+        for attempt in range(retries):
+            try:
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
 
-            res = await groq_client.chat.completions.create(**kwargs)
-            return res.choices[0].message.content
+                kwargs = {
+                    "model": model_name,
+                    "messages": messages,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                }
+                if json_mode:
+                    kwargs["response_format"] = {"type": "json_object"}
 
-        except Exception as e:
-            err_str = str(e).lower()
-            if ("429" in err_str or "413" in err_str or "rate limit" in err_str or "rate_limit" in err_str or "tokens" in err_str) and attempt < retries - 1:
-                wait_time = (attempt + 1) * 4.0
-                logger.warning("Groq rate/token limit hit (attempt %s/%s). Waiting %ss.", attempt + 1, retries, wait_time)
-                await asyncio.sleep(wait_time)
-            else:
-                logger.error("Groq API execution error: %s", e)
-                raise e
+                res = await groq_client.chat.completions.create(**kwargs)
+                return res.choices[0].message.content
+
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                if "model_not_found" in err_str or "does not exist" in err_str or "404" in err_str:
+                    logger.warning("Groq model '%s' returned 404/not found. Trying next candidate model...", model_name)
+                    break  # Try next candidate model
+                elif ("429" in err_str or "413" in err_str or "rate limit" in err_str or "rate_limit" in err_str or "tokens" in err_str) and attempt < retries - 1:
+                    wait_time = (attempt + 1) * 4.0
+                    logger.warning("Groq rate/token limit hit for %s (attempt %s/%s). Waiting %ss.", model_name, attempt + 1, retries, wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("Groq API execution error for model %s: %s", model_name, e)
+                    break
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("All Groq model candidates failed.")
+
 
 
 def call_llm(prompt: str, system_prompt: str = "", model: str = None, json_mode: bool = False, max_tokens: int = 3500) -> str:
