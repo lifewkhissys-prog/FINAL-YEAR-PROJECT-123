@@ -520,6 +520,38 @@ async def get_assessment_results(
     }
 
 
+@router.get("/submissions/{id}/chapter-text/{chapter_key}")
+async def get_chapter_text(
+    id: int,
+    chapter_key: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Return extracted text for a specific chapter of a thesis submission."""
+    res = await db.execute(select(ThesisSubmission).where(ThesisSubmission.id == id))
+    sub = res.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Submission with ID {id} not found."
+        )
+    check_submission_access(sub, current_user)
+    if chapter_key in ("all", "full", "full_thesis"):
+        return {
+            "submission_id": id,
+            "chapter_key": chapter_key,
+            "text": sub.full_text
+        }
+    chunks = chunk_thesis_by_chapters(sub.full_text)
+    return {
+        "submission_id": id,
+        "chapter_key": chapter_key,
+        "text": chunks.get(chapter_key, "")
+    }
+
+
+
+
 @router.get("/submissions/{id}/results/by-chapter/{chapter_name}")
 async def get_results_by_chapter(
     id: int,
@@ -551,7 +583,10 @@ async def get_results_by_chapter(
             continue
 
         is_mapped = r.sub_criterion_id in mapped_sub_ids
-        if not is_mapped:
+        if chapter_name in ("all", "full", "full_thesis"):
+            is_mapped = True
+        elif not is_mapped:
+
             crit_title = (criterion.name or "").lower()
             if chapter_name == "introduction" and ("1." in crit_title or "problem" in crit_title):
                 is_mapped = True
