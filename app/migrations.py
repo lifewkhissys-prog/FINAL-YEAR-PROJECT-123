@@ -19,7 +19,9 @@ ADDED_COLUMNS = [
     ("thesis_submissions", "pipeline_progress", "INTEGER"),
     ("thesis_submissions", "compliance_findings", "JSON"),
     ("thesis_submissions", "structure_option", "VARCHAR(20)"),
+    ("thesis_submissions", "cloudinary_url", "VARCHAR(500)"),
     ("thesis_submissions", "error_detail", "TEXT"),
+
     ("assessment_results", "scoring_failed", "BOOLEAN"),
     ("assessment_results", "error_detail", "TEXT"),
     ("rubric_criteria", "assessment_type", "VARCHAR(20) DEFAULT 'thesis'"),

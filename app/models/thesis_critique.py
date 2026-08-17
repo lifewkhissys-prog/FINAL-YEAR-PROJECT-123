@@ -98,7 +98,9 @@ class ThesisSubmission(Base):
     institution:                Mapped[str | None] = mapped_column(String(255), nullable=True)
     degree_level:               Mapped[str]        = mapped_column(String(50), default="mphil")
     file_path:                  Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cloudinary_url:             Mapped[str | None] = mapped_column(String(500), nullable=True)
     full_text:                  Mapped[str]        = mapped_column(Text, nullable=False)
+
     preliminary_check_passed:   Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     preliminary_check_notes:    Mapped[str | None] = mapped_column(Text, nullable=True)
     # Structured, reproducible findings from app.services.compliance_check (Guide Sections A/B/C/G).

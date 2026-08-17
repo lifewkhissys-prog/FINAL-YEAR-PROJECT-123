@@ -3,7 +3,8 @@ import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, status
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, RedirectResponse
+
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
@@ -315,9 +316,11 @@ async def create_submission(
         programme=programme,
         institution=institution,
         file_path=file_location,
+        cloudinary_url=cloudinary_url,
         full_text=full_text,
         status="pending"
     )
+
 
     db.add(sub)
     await db.commit()
@@ -611,23 +614,29 @@ async def serve_submission_document(
         raise HTTPException(status_code=404, detail="Submission not found")
     check_submission_access(sub, current_user)
 
-    if not sub.file_path or not os.path.exists(sub.file_path):
-        raise HTTPException(status_code=404, detail="Original document file not available on this server instance.")
+    if sub.file_path and os.path.exists(sub.file_path):
+        ext = Path(sub.file_path).suffix.lower()
+        media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"{sub.student_name}_{sub.title[:30]}{ext}".replace(" ", "_")
 
-    ext = Path(sub.file_path).suffix.lower()
-    media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    filename = f"{sub.student_name}_{sub.title[:30]}{ext}".replace(" ", "_")
+        def file_stream():
+            with open(sub.file_path, "rb") as f:
+                while chunk := f.read(64 * 1024):
+                    yield chunk
 
-    def file_stream():
-        with open(sub.file_path, "rb") as f:
-            while chunk := f.read(64 * 1024):
-                yield chunk
+        return StreamingResponse(
+            file_stream(),
+            media_type=media_type,
+            headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
+        )
 
-    return StreamingResponse(
-        file_stream(),
-        media_type=media_type,
-        headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
-    )
+    # Cloudinary fallback: if local file is missing due to container restart, redirect to Cloudinary URL
+    target_cloudinary_url = sub.cloudinary_url or (sub.file_path if sub.file_path and sub.file_path.startswith("http") else None)
+    if target_cloudinary_url:
+        return RedirectResponse(url=target_cloudinary_url)
+
+    raise HTTPException(status_code=404, detail="Original document file not available on local server or Cloudinary storage.")
+
 
 
 
