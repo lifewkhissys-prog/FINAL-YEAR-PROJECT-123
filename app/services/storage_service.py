@@ -26,10 +26,11 @@ def upload_thesis_file(file_bytes: bytes, filename: str) -> Tuple[str, Optional[
             cloudinary.config(cloudinary_url=cloudinary_env)
             res = cloudinary.uploader.upload(
                 local_path,
-                resource_type="raw",
+                resource_type="auto",
                 public_id=f"thesis_uploads/{safe_filename}",
                 unique_filename=False
             )
+
             cloudinary_url = res.get("secure_url")
             print(f"Uploaded thesis to Cloudinary: {cloudinary_url}")
         except Exception as e:

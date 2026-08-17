@@ -630,12 +630,28 @@ async def serve_submission_document(
             headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
         )
 
-    # Cloudinary fallback: if local file is missing due to container restart, redirect to Cloudinary URL
+    # Cloudinary fallback: if local file is missing due to container restart, fetch stream from Cloudinary to bypass browser 401 restrictions
     target_cloudinary_url = sub.cloudinary_url or (sub.file_path if sub.file_path and sub.file_path.startswith("http") else None)
     if target_cloudinary_url:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(target_cloudinary_url, follow_redirects=True)
+                if resp.status_code == 200:
+                    ext = ".pdf" if "pdf" in target_cloudinary_url.lower() else ".docx"
+                    media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    filename = f"{sub.student_name}_{sub.title[:30]}{ext}".replace(" ", "_")
+                    return Response(
+                        content=resp.content,
+                        media_type=media_type,
+                        headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
+                    )
+        except Exception as e:
+            print(f"Cloudinary fetch warning: {e}")
         return RedirectResponse(url=target_cloudinary_url)
 
     raise HTTPException(status_code=404, detail="Original document file not available on local server or Cloudinary storage.")
+
 
 
 
