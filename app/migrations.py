@@ -66,6 +66,15 @@ async def apply_migrations(verbose: bool = True) -> list[str]:
                 except Exception as e:
                     warnings.append(f"could not relax {table}.{column}: {e}")
 
+            # Alter column types that were previously truncated to VARCHAR(100)
+            try:
+                await conn.execute(text("ALTER TABLE thesis_submissions ALTER COLUMN supervisor_recommendation TYPE TEXT"))
+                await conn.execute(text("ALTER TABLE thesis_submissions ALTER COLUMN pipeline_step TYPE VARCHAR(255)"))
+                log("Schema: updated thesis_submissions.supervisor_recommendation to TEXT")
+            except Exception as e:
+                pass
+
+
         elif dialect == "sqlite":
             # SQLite cannot drop a NOT NULL constraint in place. Report it rather than letting the
             # first unscored sub-criterion fail with an opaque IntegrityError at insert time.

@@ -112,10 +112,11 @@ class ThesisSubmission(Base):
     plagiarism_checked_at:      Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     narrative_report:           Mapped[str | None] = mapped_column(Text, nullable=True)
     narrative_report_edited:    Mapped[str | None] = mapped_column(Text, nullable=True)
-    supervisor_recommendation:  Mapped[str | None] = mapped_column(String(100), nullable=True)
+    supervisor_recommendation:  Mapped[str | None] = mapped_column(Text, nullable=True)
     submitted_at:               Mapped[datetime]   = mapped_column(DateTime(timezone=True), server_default=func.now())
     status:                     Mapped[str]        = mapped_column(String(50), default="pending")
-    pipeline_step:              Mapped[str | None] = mapped_column(String(100), nullable=True)
+    pipeline_step:              Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     pipeline_progress:          Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     assessment_results: Mapped[List["AssessmentResult"]] = relationship("AssessmentResult", back_populates="submission", cascade="all, delete-orphan")
