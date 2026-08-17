@@ -632,22 +632,23 @@ async def get_results_by_chapter(
         if chapter_name in ("all", "full", "full_thesis"):
             is_mapped = True
         elif not is_mapped:
+            # Strict fallback: only match by chapter number prefix at start of criterion name
+            crit_title = (criterion.name or "").strip().lower()
+            if chapter_name == "introduction" and crit_title.startswith("1."):
+                is_mapped = True
+            elif chapter_name == "literature_review" and crit_title.startswith("2."):
+                is_mapped = True
+            elif chapter_name == "methodology" and crit_title.startswith("3."):
+                is_mapped = True
+            elif chapter_name in ["data_analysis", "results"] and crit_title.startswith("4."):
+                is_mapped = True
+            elif chapter_name == "discussion" and crit_title.startswith("5."):
+                is_mapped = True
+            elif chapter_name == "conclusion" and crit_title.startswith("6."):
+                is_mapped = True
+            elif chapter_name == "references" and crit_title.startswith("7."):
+                is_mapped = True
 
-            crit_title = (criterion.name or "").lower()
-            if chapter_name == "introduction" and ("1." in crit_title or "problem" in crit_title):
-                is_mapped = True
-            elif chapter_name == "literature_review" and ("2." in crit_title or "literature" in crit_title or "survey" in crit_title):
-                is_mapped = True
-            elif chapter_name == "methodology" and ("3." in crit_title or "method" in crit_title or "design" in crit_title):
-                is_mapped = True
-            elif chapter_name in ["data_analysis", "results"] and ("4." in crit_title or "analysis" in crit_title or "results" in crit_title or "testing" in crit_title):
-                is_mapped = True
-            elif chapter_name == "discussion" and ("5." in crit_title or "finding" in crit_title or "discussion" in crit_title):
-                is_mapped = True
-            elif chapter_name == "conclusion" and ("6." in crit_title or "conclusion" in crit_title):
-                is_mapped = True
-            elif chapter_name == "references" and ("7." in crit_title or "presentation" in crit_title):
-                is_mapped = True
 
         if is_mapped:
             out.append({
