@@ -106,9 +106,10 @@ async def call_llm_async(
         raise ValueError("GROQ_API_KEY is not configured in settings or .env file.")
 
     candidate_models = [primary_model]
-    for fallback in ["llama-3.3-70b-versatile", "llama3-8b-8192", "llama-3.1-8b-instant", "llama3-70b-8192"]:
+    for fallback in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b", "meta-llama/llama-4-scout-17b-16e-instruct"]:
         if fallback not in candidate_models:
             candidate_models.append(fallback)
+
 
     last_error = None
     for model_name in candidate_models:
@@ -123,13 +124,20 @@ async def call_llm_async(
                     "model": model_name,
                     "messages": messages,
                     "temperature": temperature,
-                    "max_tokens": max_tokens,
+                    "max_completion_tokens": max_tokens,
                 }
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}
 
-                res = await groq_client.chat.completions.create(**kwargs)
+                try:
+                    res = await groq_client.chat.completions.create(**kwargs)
+                except TypeError:
+                    # Fallback for older SDK versions expecting max_tokens
+                    kwargs["max_tokens"] = kwargs.pop("max_completion_tokens")
+                    res = await groq_client.chat.completions.create(**kwargs)
+
                 return res.choices[0].message.content
+
 
             except Exception as e:
                 last_error = e

@@ -15,11 +15,12 @@ class Settings(BaseSettings):
 
     # Groq API — model-per-task configuration
     GROQ_API_KEY: str = Field(default="")
-    GROQ_SCORER_MODEL: str = Field(default="llama-3.3-70b-versatile")
-    GROQ_VERIFIER_MODEL: str = Field(default="llama-3.3-70b-versatile")
-    GROQ_SYNTHESIS_MODEL: str = Field(default="llama-3.3-70b-versatile")
-    GROQ_FAST_MODEL: str = Field(default="llama-3.3-70b-versatile")
-    GROQ_VISION_MODEL: str = Field(default="llama-3.2-11b-vision-preview")
+    GROQ_SCORER_MODEL: str = Field(default="openai/gpt-oss-120b")
+    GROQ_VERIFIER_MODEL: str = Field(default="openai/gpt-oss-20b")
+    GROQ_SYNTHESIS_MODEL: str = Field(default="openai/gpt-oss-120b")
+    GROQ_FAST_MODEL: str = Field(default="openai/gpt-oss-20b")
+    GROQ_VISION_MODEL: str = Field(default="meta-llama/llama-4-scout-17b-16e-instruct")
+
 
     CLOUDINARY_URL: str = Field(default="")
     THESIS_UPLOAD_MAX_MB: int = Field(default=20)

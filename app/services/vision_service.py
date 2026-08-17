@@ -25,30 +25,41 @@ async def analyze_figure_image(image_bytes: bytes, caption_hint: str = "") -> Op
             "Keep the output under 150 words focused on technical facts."
         )
 
-        vision_model = getattr(settings, "GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
+        vision_models = [
+            getattr(settings, "GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct"),
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "openai/gpt-oss-120b"
+        ]
 
-        response = await client.chat.completions.create(
-            model=vision_model,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
+
+        for model_name in dict.fromkeys(vision_models):
+            try:
+                response = await client.chat.completions.create(
+                    model=model_name,
+                    messages=[
                         {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{b64_str}"
-                            }
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{b64_str}"
+                                    }
+                                }
+                            ]
                         }
-                    ]
-                }
-            ],
-            max_tokens=300,
-            temperature=0.2
-        )
+                    ],
+                    max_completion_tokens=300,
+                    temperature=0.2
+                )
 
-        if response.choices and response.choices[0].message.content:
-            return response.choices[0].message.content.strip()
+                if response.choices and response.choices[0].message.content:
+                    return response.choices[0].message.content.strip()
+            except Exception as model_err:
+                print(f"Groq Vision model {model_name} attempt: {model_err}")
+                continue
+
     except Exception as e:
         print(f"Groq Vision API warning: {e}")
         return None
