@@ -286,31 +286,17 @@ async def create_submission(
     os.makedirs("uploads", exist_ok=True)
     file_location = os.path.join("uploads", safe_filename)
 
+    from app.services.storage_service import upload_thesis_file
     max_bytes = settings.THESIS_UPLOAD_MAX_MB * 1024 * 1024
-    total_bytes = 0
+    file_bytes = await file.read()
+    if len(file_bytes) > max_bytes:
 
-    try:
-        with open(file_location, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                total_bytes += len(chunk)
-                if total_bytes > max_bytes:
-                    buffer.close()
-                    if os.path.exists(file_location):
-                        os.remove(file_location)
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"File exceeds maximum allowed upload size of {settings.THESIS_UPLOAD_MAX_MB}MB."
-                    )
-                buffer.write(chunk)
-    except HTTPException:
-        raise
-    except Exception as e:
-        if os.path.exists(file_location):
-            os.remove(file_location)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save upload file: {e}"
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds maximum allowed upload size of {settings.THESIS_UPLOAD_MAX_MB}MB."
         )
+
+    file_location, cloudinary_url = upload_thesis_file(file_bytes, filename_base)
 
     full_text = parse_thesis_document(file_location)
     if not full_text or len(full_text.strip()) == 0:
@@ -332,6 +318,7 @@ async def create_submission(
         full_text=full_text,
         status="pending"
     )
+
     db.add(sub)
     await db.commit()
     await db.refresh(sub)

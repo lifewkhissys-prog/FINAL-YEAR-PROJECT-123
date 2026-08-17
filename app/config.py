@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     GROQ_SYNTHESIS_MODEL: str = Field(default="llama-3.1-8b-instant")
     GROQ_FAST_MODEL: str = Field(default="llama-3.1-8b-instant")
     GROQ_VISION_MODEL: str = Field(default="llama-3.2-11b-vision-preview")
+    CLOUDINARY_URL: str = Field(default="")
     THESIS_UPLOAD_MAX_MB: int = Field(default=20)
+
 
 
     # Embedding model (sentence-transformers compatible name)

@@ -25,7 +25,9 @@ dependencies = [
     "pgvector>=0.3.0",
     "numpy>=1.26.0",
     "fastembed>=0.4.0",
+    "cloudinary>=1.40.0",
 ]
+
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
