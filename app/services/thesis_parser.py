@@ -63,12 +63,13 @@ def parse_thesis_document(file_path: str) -> str:
 def extract_metadata_from_text(full_text: str) -> dict:
     """
     Extract student name, index number, title, degree level, and programme from cover page / title page text.
+    Handles 2-column and tabular PDF/DOCX layouts cleanly.
     """
     if not full_text:
         return {"student_name": None, "index_number": None, "title": None, "degree_level": None, "programme": None}
 
-    # Focus on first ~2500 characters (cover page & title page)
-    cover_text = full_text[:2500]
+    # Focus on first ~3000 characters (cover page & title page)
+    cover_text = full_text[:3000]
     lines = [line.strip() for line in cover_text.splitlines() if line.strip()]
 
     extracted = {
@@ -79,43 +80,63 @@ def extract_metadata_from_text(full_text: str) -> dict:
         "programme": None
     }
 
-    # 1. Extract Student Name
-    by_patterns = [
-        r"(?i)(?:presented\s+by|submitted\s+by|author|by)\s*[:\-\s]+\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",
-        r"(?i)^by\s+([A-Z\s]{4,40})$",
-        r"(?i)(?:student\s+name|name\s+of\s+student)\s*[:\-]?\s*([A-Za-z\s]{3,40})"
-    ]
-
-    for pat in by_patterns:
-        m = re.search(pat, cover_text, re.MULTILINE)
-        if m:
-            candidate = m.group(1).strip()
-            if len(candidate) > 2 and not re.search(r"(?i)\b(university|department|faculty|degree|bsc|mphil|phd|thesis|college|school)\b", candidate):
-                extracted["student_name"] = candidate.title()
-                break
-
-    # 2. Extract Index Number / Student ID
+    # 1. Extract Index Number (Strict format: 5 to 10 digits, or standard student ID)
     index_patterns = [
-        r"(?i)(?:index\s+no\.?|index\s+number|student\s+id|student\s+number|reg\.?\s+no\.?|registration\s+number|id\s+number)\s*[:\-]?\s*([A-Za-z0-9\/\-]{5,25})",
-        r"(?i)\b(20\d{6,8})\b",
-        r"(?i)\b(PG\d{6,8}|BC\d{6,8}|UE\d{6,8}|PS\d{6,8})\b"
+        r"(?i)(?:index\s+no\.?|index\s+number|student\s+id|student\s+no\.?|student\s+number|reg\.?\s+no\.?|registration\s+number|id\s+number)\s*[:\-\s]+\s*(\d{5,10}|[A-Z0-9\/\-]{5,20})",
+        r"(?i)\b(\d{6,10})\b",
+        r"(?i)\b([A-Z]{2}\d{5,8}|PG\d{5,8}|BC\d{5,8}|UE\d{5,8}|PS\d{5,8})\b"
     ]
     for pat in index_patterns:
-        m = re.search(pat, cover_text, re.MULTILINE)
+        m = re.search(pat, cover_text)
         if m:
-            extracted["index_number"] = m.group(1).strip()
+            val = m.group(1).strip()
+            if re.match(r"^(\d{5,10}|[A-Z0-9\/\-]{5,20})$", val, re.IGNORECASE) and not re.search(r"(?i)\b(name|index|number|by|title)\b", val):
+                extracted["index_number"] = val
+                break
+
+    # 2. Extract Student Name
+    for line in lines:
+        # Strip common headers
+        clean_line = re.sub(r"(?i)^(documented\s+by|presented\s+by|submitted\s+by|by|name\s+index\s+number|name|index\s+number|student\s+name|index\s+no)[\s:\-]+", "", line).strip()
+        
+        # Check if line contains both Name and Index Number (e.g. 'Mahfuz Agbor Seidu 3364722')
+        m_combined = re.search(r"^([A-Z][a-zA-Z\.\'\-]+\s+[A-Z][a-zA-Z\.\'\-\s]+?)\s+(\d{5,10})$", clean_line)
+        if m_combined:
+            extracted["student_name"] = m_combined.group(1).strip().title()
+            if not extracted["index_number"]:
+                extracted["index_number"] = m_combined.group(2).strip()
             break
 
+        # Check labeled patterns
+        m_name = re.search(r"(?i)(?:student\s+name|name\s+of\s+student|documented\s+by|presented\s+by|submitted\s+by|by)\s*[:\-\s]+\s*([A-Z][a-zA-Z\.\'\-]+\s+[A-Z][a-zA-Z\.\'\-\s]+)", line)
+        if m_name:
+            cand = m_name.group(1).strip()
+            cand = re.sub(r"(?i)^(name|index\s+number|student\s+id|by)[\s:\-]+", "", cand).strip()
+            if len(cand) > 3 and not re.search(r"(?i)\b(university|department|faculty|degree|bsc|mphil|phd|thesis|college|school|index)\b", cand):
+                extracted["student_name"] = cand.title()
+                break
+
+    # Fallback for student_name if still None
+    if not extracted["student_name"]:
+        for line in lines[:25]:
+            clean_line = re.sub(r"(?i)\b(documented\s+by|name\s+index\s+number|name|index\s+number|student)\b", "", line).strip(" :-")
+            clean_line_nodigits = re.sub(r"\s+\d+$", "", clean_line).strip()
+            words = clean_line_nodigits.split()
+            if 2 <= len(words) <= 4 and all(w[0].isupper() and w.isalpha() for w in words):
+                if not re.search(r"(?i)\b(university|department|faculty|college|school|degree|thesis|bank|churn|predictor|introduction|abstract)\b", clean_line_nodigits):
+                    extracted["student_name"] = clean_line_nodigits.title()
+                    break
+
     # 3. Extract Thesis Title
-    for line in lines[:12]:
-        if re.search(r"(?i)\b(kwame nkrumah|university|department|faculty|college|school of|a thesis|a project|submitted to|in partial)\b", line):
+    for line in lines[:15]:
+        if re.search(r"(?i)\b(kwame nkrumah|university|department|faculty|college|school of|a thesis|a project|submitted to|in partial|documented by|index number|name)\b", line):
             continue
-        if len(line) > 10 and (not line.isupper() or len(line.split()) >= 3):
+        if len(line) > 5 and not line.isdigit():
             if not re.search(r"(?i)^(by|author|date|march|april|may|june|july|august|september|october|november|december|january|february)\b", line):
                 extracted["title"] = line.strip(" :-")
                 break
 
-    # 3. Detect Degree Level
+    # 4. Detect Degree Level
     if re.search(r"(?i)\b(ph\.?d|doctor of philosophy)\b", cover_text):
         extracted["degree_level"] = "phd"
     elif re.search(r"(?i)\b(m\.?phil|master of philosophy)\b", cover_text):
@@ -125,7 +146,7 @@ def extract_metadata_from_text(full_text: str) -> dict:
     elif re.search(r"(?i)\b(b\.?sc|bachelor of science|undergraduate|bsc)\b", cover_text):
         extracted["degree_level"] = "undergraduate"
 
-    # 4. Detect Programme
+    # 5. Detect Programme
     prog_match = re.search(r"(?i)\b(?:programme\s+in|department\s+of|degree\s+in|bsc\.?\s+in)\s+([A-Za-z\s]+)", cover_text)
     if prog_match:
         cand_prog = prog_match.group(1).strip()
