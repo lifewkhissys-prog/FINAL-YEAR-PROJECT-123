@@ -138,13 +138,13 @@ def extract_metadata_from_text(full_text: str) -> dict:
                 break
 
     # 4. Detect Degree Level
-    if re.search(r"(?i)\b(ph\.?d|doctor of philosophy)\b", cover_text):
+    if re.search(r"(?i)\b(ph\.?d|doctor of philosophy|doctoral)\b", cover_text):
         extracted["degree_level"] = "phd"
     elif re.search(r"(?i)\b(m\.?phil|master of philosophy)\b", cover_text):
         extracted["degree_level"] = "mphil"
-    elif re.search(r"(?i)\b(m\.?sc|master of science)\b", cover_text):
+    elif re.search(r"(?i)\b(m\.?sc|master of science|taught master)\b", cover_text):
         extracted["degree_level"] = "msc"
-    elif re.search(r"(?i)\b(b\.?sc|bachelor of science|undergraduate|bsc)\b", cover_text):
+    elif re.search(r"(?i)\b(b\.?sc|bachelor|undergraduate|bsc|final year project|fyp)\b", cover_text):
         extracted["degree_level"] = "undergraduate"
 
     # 5. Detect Programme
