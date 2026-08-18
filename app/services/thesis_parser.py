@@ -148,11 +148,18 @@ def extract_metadata_from_text(full_text: str) -> dict:
         extracted["degree_level"] = "undergraduate"
 
     # 5. Detect Programme
-    prog_match = re.search(r"(?i)\b(?:programme\s+in|department\s+of|degree\s+in|bsc\.?\s+in)\s+([A-Za-z\s]+)", cover_text)
-    if prog_match:
-        cand_prog = prog_match.group(1).strip()
-        if len(cand_prog) < 40:
-            extracted["programme"] = cand_prog.title()
+    prog_patterns = [
+        r"(?i)\b(?:department\s+of|programme\s+in|degree\s+in|bsc\.?\s+(?:in\s+)?|msc\.?\s+(?:in\s+)?|mphil\.?\s+(?:in\s+)?|phd\.?\s+(?:in\s+)?)\s*([A-Za-z\s\&]{4,35})",
+        r"(?i)\b(computer\s+science|computer\s+engineering|information\s+technology|electrical\s+engineering|telecommunication\s+engineering|software\s+engineering|data\s+science)\b"
+    ]
+    for pat in prog_patterns:
+        m = re.search(pat, cover_text)
+        if m:
+            cand = m.group(1).strip()
+            cand = re.sub(r"(?i)\b(university|faculty|college|school|kwame nkrumah|kumasi|ghana)\b", "", cand).strip()
+            if len(cand) >= 4 and not re.search(r"(?i)\b(thesis|submitted|partial|fulfillment|requirement)\b", cand):
+                extracted["programme"] = cand.title()
+                break
 
     return extracted
 
