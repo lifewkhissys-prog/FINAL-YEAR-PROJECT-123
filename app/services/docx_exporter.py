@@ -71,13 +71,14 @@ def generate_thesis_docx_report(submission, results, summary, narrative_text: st
         rec = band.get("recommendation_detail", "Assessment incomplete")
 
     # 2. Metadata Table
-    table = doc.add_table(rows=6, cols=2)
+    table = doc.add_table(rows=7, cols=2)
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
 
     metadata = [
-        ("Candidate", submission.student_name or "N/A"),
-        ("Programme", submission.programme or "Master of Science in Information Technology"),
+        ("Candidate Name", submission.student_name or "N/A"),
+        ("Student / Index Number", getattr(submission, 'index_number', None) or "N/A"),
+        ("Programme", submission.programme or "Computer Science"),
         ("Institution", f"{submission.institution or 'Kwame Nkrumah University of Science and Technology, Kumasi'}"),
         ("Thesis Title", submission.title or "N/A"),
         ("Assessment Type", "Critical Supervisor Assessment"),

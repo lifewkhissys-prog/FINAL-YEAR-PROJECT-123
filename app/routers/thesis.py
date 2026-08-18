@@ -209,6 +209,7 @@ async def list_submissions(
         out.append({
             "id": s.id,
             "student_name": s.student_name,
+            "index_number": s.index_number,
             "title": s.title,
             "programme": s.programme,
             "institution": s.institution,
@@ -265,10 +266,11 @@ async def delete_submission(
 @router.post("/submissions")
 
 async def create_submission(
-    student_name: str = Form(...),
-    title: str = Form(...),
-    degree_level: str = Form("mphil"),
-    programme: str = Form("Computer Engineering"),
+    student_name: str = Form(""),
+    index_number: str = Form(""),
+    title: str = Form(""),
+    degree_level: str = Form("undergraduate"),
+    programme: str = Form("Computer Science"),
     institution: str = Form("KNUST"),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
@@ -308,12 +310,22 @@ async def create_submission(
             detail="Unable to extract text content from the uploaded file. Please ensure the PDF or DOCX file contains readable text."
         )
 
+    from app.services.thesis_parser import parse_thesis_document, extract_metadata_from_text
+    auto_meta = extract_metadata_from_text(full_text)
+
+    final_student_name = student_name.strip() if student_name and student_name.strip() else (auto_meta.get("student_name") or "Anonymous Student")
+    final_index_number = index_number.strip() if index_number and index_number.strip() else (auto_meta.get("index_number") or None)
+    final_title = title.strip() if title and title.strip() else (auto_meta.get("title") or Path(file.filename).stem)
+    final_degree = degree_level if (degree_level and degree_level != "undergraduate") else (auto_meta.get("degree_level") or degree_level or "undergraduate")
+    final_programme = programme if (programme and programme != "Computer Science") else (auto_meta.get("programme") or programme or "Computer Science")
+
     sub = ThesisSubmission(
         lecturer_id=current_user.id,
-        student_name=student_name,
-        title=title,
-        degree_level=degree_level,
-        programme=programme,
+        student_name=final_student_name,
+        index_number=final_index_number,
+        title=final_title,
+        degree_level=final_degree,
+        programme=final_programme,
         institution=institution,
         file_path=file_location,
         cloudinary_url=cloudinary_url,
@@ -321,12 +333,33 @@ async def create_submission(
         status="pending"
     )
 
-
     db.add(sub)
     await db.commit()
     await db.refresh(sub)
-
     return {"id": sub.id, "message": "Thesis uploaded successfully", "status": sub.status}
+
+@router.post("/submissions/extract-metadata")
+async def extract_metadata_endpoint(
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_lecturer)
+):
+    """Extract metadata (Student Name, Title, Degree, Programme) from uploaded cover page."""
+    temp_path = f"/tmp/{uuid.uuid4().hex}_{file.filename}"
+    try:
+        content = await file.read()
+        with open(temp_path, "wb") as f:
+            f.write(content)
+        
+        from app.services.thesis_parser import parse_thesis_document, extract_metadata_from_text
+        full_text = parse_thesis_document(temp_path)
+        meta = extract_metadata_from_text(full_text)
+        return meta
+    except Exception as e:
+        print(f"Error extracting metadata: {e}")
+        return {"student_name": None, "index_number": None, "title": None, "degree_level": None, "programme": None}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 @router.post("/submissions/{id}/assess")

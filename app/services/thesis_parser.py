@@ -60,6 +60,80 @@ def parse_thesis_document(file_path: str) -> str:
             text = f.read()
     return text
 
+def extract_metadata_from_text(full_text: str) -> dict:
+    """
+    Extract student name, index number, title, degree level, and programme from cover page / title page text.
+    """
+    if not full_text:
+        return {"student_name": None, "index_number": None, "title": None, "degree_level": None, "programme": None}
+
+    # Focus on first ~2500 characters (cover page & title page)
+    cover_text = full_text[:2500]
+    lines = [line.strip() for line in cover_text.splitlines() if line.strip()]
+
+    extracted = {
+        "student_name": None,
+        "index_number": None,
+        "title": None,
+        "degree_level": None,
+        "programme": None
+    }
+
+    # 1. Extract Student Name
+    by_patterns = [
+        r"(?i)(?:presented\s+by|submitted\s+by|author|by)\s*[:\-\s]+\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",
+        r"(?i)^by\s+([A-Z\s]{4,40})$",
+        r"(?i)(?:student\s+name|name\s+of\s+student)\s*[:\-]?\s*([A-Za-z\s]{3,40})"
+    ]
+
+    for pat in by_patterns:
+        m = re.search(pat, cover_text, re.MULTILINE)
+        if m:
+            candidate = m.group(1).strip()
+            if len(candidate) > 2 and not re.search(r"(?i)\b(university|department|faculty|degree|bsc|mphil|phd|thesis|college|school)\b", candidate):
+                extracted["student_name"] = candidate.title()
+                break
+
+    # 2. Extract Index Number / Student ID
+    index_patterns = [
+        r"(?i)(?:index\s+no\.?|index\s+number|student\s+id|student\s+number|reg\.?\s+no\.?|registration\s+number|id\s+number)\s*[:\-]?\s*([A-Za-z0-9\/\-]{5,25})",
+        r"(?i)\b(20\d{6,8})\b",
+        r"(?i)\b(PG\d{6,8}|BC\d{6,8}|UE\d{6,8}|PS\d{6,8})\b"
+    ]
+    for pat in index_patterns:
+        m = re.search(pat, cover_text, re.MULTILINE)
+        if m:
+            extracted["index_number"] = m.group(1).strip()
+            break
+
+    # 3. Extract Thesis Title
+    for line in lines[:12]:
+        if re.search(r"(?i)\b(kwame nkrumah|university|department|faculty|college|school of|a thesis|a project|submitted to|in partial)\b", line):
+            continue
+        if len(line) > 10 and (not line.isupper() or len(line.split()) >= 3):
+            if not re.search(r"(?i)^(by|author|date|march|april|may|june|july|august|september|october|november|december|january|february)\b", line):
+                extracted["title"] = line.strip(" :-")
+                break
+
+    # 3. Detect Degree Level
+    if re.search(r"(?i)\b(ph\.?d|doctor of philosophy)\b", cover_text):
+        extracted["degree_level"] = "phd"
+    elif re.search(r"(?i)\b(m\.?phil|master of philosophy)\b", cover_text):
+        extracted["degree_level"] = "mphil"
+    elif re.search(r"(?i)\b(m\.?sc|master of science)\b", cover_text):
+        extracted["degree_level"] = "msc"
+    elif re.search(r"(?i)\b(b\.?sc|bachelor of science|undergraduate|bsc)\b", cover_text):
+        extracted["degree_level"] = "undergraduate"
+
+    # 4. Detect Programme
+    prog_match = re.search(r"(?i)\b(?:programme\s+in|department\s+of|degree\s+in|bsc\.?\s+in)\s+([A-Za-z\s]+)", cover_text)
+    if prog_match:
+        cand_prog = prog_match.group(1).strip()
+        if len(cand_prog) < 40:
+            extracted["programme"] = cand_prog.title()
+
+    return extracted
+
 CHAPTER_KEYS = [
     "introduction",
     "literature_review",

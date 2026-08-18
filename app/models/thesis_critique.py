@@ -93,6 +93,7 @@ class ThesisSubmission(Base):
     id:                         Mapped[int]        = mapped_column(Integer, primary_key=True)
     lecturer_id:                Mapped[int | None] = mapped_column(Integer, nullable=True)
     student_name:               Mapped[str | None] = mapped_column(String(255), nullable=True)
+    index_number:               Mapped[str | None] = mapped_column(String(100), nullable=True)
     title:                      Mapped[str | None] = mapped_column(String(500), nullable=True)
     programme:                  Mapped[str | None] = mapped_column(String(255), nullable=True)
     institution:                Mapped[str | None] = mapped_column(String(255), nullable=True)

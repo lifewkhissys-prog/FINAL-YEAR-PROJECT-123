@@ -6,17 +6,48 @@ import { authFetch, safeJson } from '../../api/axiosInstance';
 export default function UploadThesisPage() {
   const navigate = useNavigate();
   const [studentName, setStudentName] = useState('');
-  const [degreeLevel, setDegreeLevel] = useState('mphil');
+  const [indexNumber, setIndexNumber] = useState('');
+  const [degreeLevel, setDegreeLevel] = useState('undergraduate');
   const [thesisTitle, setThesisTitle] = useState('');
-  const [programme, setProgramme] = useState('Computer Engineering');
+  const [programme, setProgramme] = useState('Computer Science');
   const [institution, setInstitution] = useState('Kwame Nkrumah University of Science and Technology (KNUST)');
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [autoExtracted, setAutoExtracted] = useState(false);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = async (e) => {
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setSelectedFile(file);
+      setIsExtracting(true);
+      setAutoExtracted(false);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await authFetch('/api/submissions/extract-metadata', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (res.ok) {
+          const meta = await safeJson(res);
+          if (meta) {
+            if (meta.student_name) setStudentName(meta.student_name);
+            if (meta.index_number) setIndexNumber(meta.index_number);
+            if (meta.title) setThesisTitle(meta.title);
+            if (meta.degree_level) setDegreeLevel(meta.degree_level);
+            if (meta.programme) setProgramme(meta.programme);
+            setAutoExtracted(true);
+          }
+        }
+      } catch (err) {
+        console.log("Metadata extraction warning:", err);
+      } finally {
+        setIsExtracting(false);
+      }
     }
   };
 
@@ -32,9 +63,10 @@ export default function UploadThesisPage() {
 
     try {
       const formData = new FormData();
-      formData.append('student_name', studentName);
+      formData.append('student_name', studentName.trim() || 'Anonymous Student');
+      formData.append('index_number', indexNumber.trim());
       formData.append('degree_level', degreeLevel);
-      formData.append('title', thesisTitle);
+      formData.append('title', thesisTitle.trim() || selectedFile.name.replace(/\.[^/.]+$/, ''));
       formData.append('programme', programme);
       formData.append('institution', institution);
       formData.append('file', selectedFile);
@@ -127,28 +159,56 @@ export default function UploadThesisPage() {
                 />
                 <div className="w-14 h-14 bg-surface-container rounded-full flex items-center justify-center mb-3 group-hover:bg-primary-container group-hover:text-on-primary-container transition-colors">
                   <span className="material-symbols-outlined text-3xl text-primary" style={{ fontVariationSettings: "'FILL' 0" }}>
-                    upload_file
+                    {isExtracting ? 'auto_awesome' : 'upload_file'}
                   </span>
                 </div>
                 <p className="text-sm font-semibold text-primary mb-1">
                   {selectedFile ? selectedFile.name : 'Click to upload or drag & drop student thesis'}
                 </p>
                 <p className="text-xs text-on-surface-variant">PDF, DOCX, or TXT (KNUST thesis document format)</p>
+
+                {isExtracting && (
+                  <div className="mt-2.5 px-3 py-1 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs font-semibold rounded-full flex items-center gap-1.5 animate-pulse">
+                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    Extracting Student Name & Title from Cover Page...
+                  </div>
+                )}
+
+                {autoExtracted && !isExtracting && (
+                  <div className="mt-2.5 px-3 py-1 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-xs font-semibold rounded-full flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    Metadata Auto-Extracted from Cover Page!
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Student Name */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-on-surface" htmlFor="studentName">
-                    Student Name
+                    Student Name <span className="text-[10px] text-on-surface-variant font-normal">(Optional)</span>
                   </label>
                   <input
                     id="studentName"
                     type="text"
-                    required
                     value={studentName}
                     onChange={(e) => setStudentName(e.target.value)}
-                    placeholder="e.g. Elvis Atiah"
+                    placeholder="e.g. Elvis Atiah (Optional)"
+                    className="bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                  />
+                </div>
+
+                {/* Index / Student Number */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-on-surface" htmlFor="indexNumber">
+                    Student Index / ID Number <span className="text-[10px] text-on-surface-variant font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    id="indexNumber"
+                    type="text"
+                    value={indexNumber}
+                    onChange={(e) => setIndexNumber(e.target.value)}
+                    placeholder="e.g. 20821943 or PG1234567"
                     className="bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                   />
                 </div>
@@ -180,15 +240,14 @@ export default function UploadThesisPage() {
               {/* Thesis Title */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-on-surface" htmlFor="thesisTitle">
-                  Thesis Title
+                  Thesis Title <span className="text-[10px] text-on-surface-variant font-normal">(Optional — auto-filled from document if empty)</span>
                 </label>
                 <input
                   id="thesisTitle"
                   type="text"
-                  required
                   value={thesisTitle}
                   onChange={(e) => setThesisTitle(e.target.value)}
-                  placeholder="Enter full thesis title"
+                  placeholder="Enter full thesis title (Optional)"
                   className="bg-white border border-outline-variant rounded px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
                 />
               </div>

@@ -205,6 +205,17 @@ export default function FinalNarrativeReportPage() {
                   <p className="text-xs italic text-slate-600 font-sans">School of Graduate Studies — Critical Thesis Assessment Report</p>
                 </div>
 
+                {/* Candidate Metadata Summary */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded text-xs font-sans space-y-1.5">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-slate-700">
+                    <div><span className="font-bold text-slate-900">Candidate Name:</span> {submission?.student_name || 'N/A'}</div>
+                    <div><span className="font-bold text-slate-900">Index / Student No:</span> {submission?.index_number || 'N/A'}</div>
+                    <div><span className="font-bold text-slate-900">Programme:</span> {submission?.programme || 'Computer Science'}</div>
+                    <div><span className="font-bold text-slate-900">Degree Level:</span> {submission?.degree_level?.toUpperCase() || 'BSC'}</div>
+                  </div>
+                  <div className="pt-1.5 border-t border-slate-200"><span className="font-bold text-slate-900">Thesis Title:</span> {submission?.title || 'N/A'}</div>
+                </div>
+
                 {/* Recommendation Banner */}
                 <div className="bg-slate-50 border border-slate-200 p-4 rounded text-xs font-sans space-y-1">
                   <span className="font-bold uppercase tracking-wider text-slate-500 block text-[10px]">Official Verdict</span>
