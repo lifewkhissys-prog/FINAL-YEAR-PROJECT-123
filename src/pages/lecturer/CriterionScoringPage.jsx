@@ -223,10 +223,10 @@ export default function CriterionScoringPage() {
 
         {/* Right Pane: Evaluation Scoring Panel */}
         {!isFullManuscript && (
-          <aside className="w-full lg:w-[400px] bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-sm overflow-y-auto flex flex-col shrink-0" style={{ minHeight: 0 }}>
+          <aside className="w-full lg:w-[400px] bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-sm overflow-hidden flex flex-col shrink-0" style={{ minHeight: 0, height: '100%' }}>
             
             {/* Eval Header */}
-            <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2 shrink-0 sticky top-0 bg-surface-container-lowest z-10">
+            <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2 shrink-0 bg-surface-container-lowest z-10">
               <div>
                 <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Evaluation</div>
                 <h2 className="font-serif text-sm font-bold text-primary">{activeChapterLabel}</h2>
@@ -248,8 +248,8 @@ export default function CriterionScoringPage() {
               </div>
             </div>
 
-            {/* Eval Body */}
-            <div className="px-3 py-3 space-y-3">
+            {/* Eval Body — Independent Scroll Container */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
               {loadingResults ? (
                 <div className="py-12 text-center text-on-surface-variant text-xs flex items-center justify-center gap-2">
                   <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
@@ -272,13 +272,20 @@ export default function CriterionScoringPage() {
                       id={`sub-crit-${item.sub_criterion_id}`}
                       className={`p-3.5 rounded-xl border transition-all duration-300 space-y-2.5 ${
                         isCardHighlighted
-                          ? 'border-secondary bg-surface-container-low shadow-md'
+                          ? 'border-amber-400 dark:border-amber-600 bg-amber-50/70 dark:bg-amber-950/40 shadow-md ring-2 ring-amber-400/40 border-l-4 border-l-amber-500'
                           : 'border-surface-container-highest bg-surface-container-lowest shadow-sm'
                       }`}
                     >
-                      {/* Title */}
+                      {/* Title Header with Active Highlight Pill */}
                       <div className="border-b border-surface-container pb-2">
-                        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.criterion_name}</span>
+                        <div className="flex items-center justify-between gap-1 mb-0.5">
+                          <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.criterion_name}</span>
+                          {isCardHighlighted && (
+                            <span className="px-2 py-0.5 bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 font-bold text-[8px] rounded-full flex items-center gap-0.5">
+                              <span className="material-symbols-outlined text-[9px]">auto_awesome</span>Active Highlight
+                            </span>
+                          )}
+                        </div>
                         <h3 className="font-serif text-[13px] font-bold text-primary leading-tight">{item.sub_criterion_name}</h3>
                         <div className="flex items-center gap-1.5 mt-1">
                           {item.score_consistency_flag && (
