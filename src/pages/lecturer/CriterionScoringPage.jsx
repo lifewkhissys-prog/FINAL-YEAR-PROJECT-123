@@ -144,8 +144,22 @@ export default function CriterionScoringPage() {
         {/* Left Sidebar: Chapter Navigation */}
         <aside className="w-full lg:w-48 bg-surface-container-lowest border border-surface-container-highest rounded-xl p-3 shrink-0 shadow-sm flex flex-col justify-between overflow-y-auto">
           <div>
-            <div className="px-2 mb-3">
-              <h2 className="font-serif text-sm font-bold text-primary">Chapters</h2>
+            {/* Prominent Verification Gate Button at TOP of Sidebar */}
+            <div className="pb-3 border-b border-surface-container mb-3">
+              <button
+                onClick={() => navigate(`/thesis/submission/${id}/verification`)}
+                className="w-full px-3 py-2 bg-primary hover:opacity-90 text-on-primary text-xs font-bold rounded-lg transition-all shadow-xs flex items-center justify-between"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">verified</span>
+                  <span>Verification Gate</span>
+                </div>
+                <span className="material-symbols-outlined text-xs">arrow_forward</span>
+              </button>
+            </div>
+
+            <div className="px-2 mb-2">
+              <h2 className="font-serif text-xs font-bold text-on-surface-variant uppercase tracking-wider">Chapters</h2>
             </div>
             <nav className="space-y-0.5">
               {CHAPTERS.map(ch => {
@@ -167,15 +181,6 @@ export default function CriterionScoringPage() {
               })}
             </nav>
           </div>
-          <div className="pt-3 border-t border-surface-container mt-3">
-            <button
-              onClick={() => navigate(`/thesis/submission/${id}/verification`)}
-              className="w-full px-2.5 py-1.5 bg-surface-container text-primary text-[10px] font-bold rounded-lg hover:bg-surface-container-high transition-colors flex items-center justify-between"
-            >
-              <span>Verification Gate</span>
-              <span className="material-symbols-outlined text-xs">arrow_forward</span>
-            </button>
-          </div>
         </aside>
 
         {/* Center: Document Viewer */}
@@ -185,7 +190,7 @@ export default function CriterionScoringPage() {
           style={{ minHeight: 0 }}
         >
           {/* Reader Header */}
-          <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2.5 shrink-0 bg-surface-container-lowest">
+          <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2 shrink-0 bg-surface-container-lowest">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-base">
                 {isFullManuscript ? 'auto_stories' : 'article'}
@@ -194,6 +199,14 @@ export default function CriterionScoringPage() {
                 {activeChapterLabel}
               </h2>
             </div>
+
+            <button
+              onClick={() => navigate(`/thesis/submission/${id}/verification`)}
+              className="px-2.5 py-1 bg-surface-container hover:bg-surface-container-high text-primary text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors border border-surface-container-highest"
+            >
+              <span>Verification Gate</span>
+              <span className="material-symbols-outlined text-xs">arrow_forward</span>
+            </button>
           </div>
 
           {/* Reader Content: Dedicated Document Viewer */}
@@ -213,19 +226,25 @@ export default function CriterionScoringPage() {
           <aside className="w-full lg:w-[400px] bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-sm overflow-y-auto flex flex-col shrink-0" style={{ minHeight: 0 }}>
             
             {/* Eval Header */}
-            <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2.5 shrink-0 sticky top-0 bg-surface-container-lowest z-10">
+            <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2 shrink-0 sticky top-0 bg-surface-container-lowest z-10">
               <div>
                 <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Evaluation</div>
                 <h2 className="font-serif text-sm font-bold text-primary">{activeChapterLabel}</h2>
               </div>
-              <div className="bg-surface-container-low px-2.5 py-1 rounded-lg border border-surface-container text-right">
-                <span className="text-[9px] font-bold text-on-surface-variant uppercase block">Subtotal</span>
-                <span className="text-sm font-bold text-primary">
-                  {chapterSubtotal.toFixed(1)} / {chapterMaxTotal.toFixed(1)}
-                </span>
-                {unscoredCount > 0 && (
-                  <span className="text-[9px] text-error block font-semibold">{unscoredCount} unscored</span>
-                )}
+              <div className="flex items-center gap-2">
+                <div className="bg-surface-container-low px-2 py-0.5 rounded-lg border border-surface-container text-right">
+                  <span className="text-[8px] font-bold text-on-surface-variant uppercase block">Subtotal</span>
+                  <span className="text-xs font-bold text-primary">
+                    {chapterSubtotal.toFixed(1)} / {chapterMaxTotal.toFixed(1)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => navigate(`/thesis/submission/${id}/verification`)}
+                  className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded-lg hover:opacity-90 transition-opacity shadow-xs flex items-center gap-0.5"
+                >
+                  <span>Verification</span>
+                  <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                </button>
               </div>
             </div>
 
@@ -279,25 +298,71 @@ export default function CriterionScoringPage() {
                         </div>
                       </div>
 
-                      {/* Evidence Quote Button */}
-                      {item.evidence_quote && (
-                        <div className="bg-surface-container-low p-2.5 rounded-lg border border-surface-container">
-                          <div className="text-[8px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Evidence Quote</div>
-                          <p className="text-[11px] font-serif italic text-on-surface line-clamp-3 leading-relaxed mb-2">
-                            "{item.evidence_quote}"
+                      {/* AI Evaluation Breakdown / Critique */}
+                      {item.ai_justification && (
+                        <div className="bg-surface-container-low p-2.5 rounded-lg border border-surface-container space-y-1">
+                          <div className="text-[8px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[11px]">auto_awesome</span>
+                            Evaluation Breakdown & Critique
+                          </div>
+                          <p className="text-[11px] text-on-surface leading-relaxed whitespace-pre-line">
+                            {item.ai_justification}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Evidence Citation Quote & Highlight Button */}
+                      {(item.cited_text || item.evidence_quote) && (
+                        <div className="bg-amber-50/70 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-200/80 dark:border-amber-800/50 space-y-1.5">
+                          <div className="text-[8px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                            <span className="material-symbols-outlined text-[11px] text-amber-600">format_quote</span>
+                            Evidence Citation
+                          </div>
+                          <p className="text-[11px] font-serif italic text-on-surface line-clamp-4 leading-relaxed">
+                            "{item.cited_text || item.evidence_quote}"
                           </p>
                           <button
-                            onClick={() => handleHighlightQuote(item.sub_criterion_id, item.evidence_quote)}
-                            className="w-full py-1 px-2 bg-surface-container hover:bg-surface-container-high text-primary text-[10px] font-bold rounded flex items-center justify-center gap-1 transition-colors border border-surface-container-highest"
+                            onClick={() => handleHighlightQuote(item.sub_criterion_id, item.cited_text || item.evidence_quote)}
+                            className="w-full py-1 px-2 bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 text-amber-900 dark:text-amber-200 text-[10px] font-bold rounded flex items-center justify-center gap-1 transition-colors border border-amber-300/80 dark:border-amber-700/80"
                           >
-                            <span className="material-symbols-outlined text-xs text-amber-500">search</span>
+                            <span className="material-symbols-outlined text-xs text-amber-600">search</span>
                             Highlight Evidence in Document
                           </button>
                         </div>
                       )}
 
+                      {/* Rubric Band Expectations (Level High/Mid/Low) */}
+                      {(item.level_high_desc || item.level_mid_desc || item.level_low_desc) && (
+                        <details className="bg-surface-container-low rounded-lg border border-surface-container text-[10px] group">
+                          <summary className="px-2.5 py-1.5 font-bold text-on-surface-variant cursor-pointer hover:text-primary flex items-center justify-between">
+                            <span>Rubric Scoring Guide</span>
+                            <span className="material-symbols-outlined text-xs group-open:rotate-180 transition-transform">expand_more</span>
+                          </summary>
+                          <div className="px-2.5 pb-2.5 pt-1 space-y-1.5 border-t border-surface-container">
+                            {item.level_high_desc && (
+                              <div>
+                                <span className="font-bold text-emerald-700 dark:text-emerald-400">High Level: </span>
+                                <span className="text-on-surface-variant">{item.level_high_desc}</span>
+                              </div>
+                            )}
+                            {item.level_mid_desc && (
+                              <div>
+                                <span className="font-bold text-amber-700 dark:text-amber-400">Mid Level: </span>
+                                <span className="text-on-surface-variant">{item.level_mid_desc}</span>
+                              </div>
+                            )}
+                            {item.level_low_desc && (
+                              <div>
+                                <span className="font-bold text-rose-700 dark:text-rose-400">Low Level: </span>
+                                <span className="text-on-surface-variant">{item.level_low_desc}</span>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      )}
+
                       {/* Score Override Slider & Controls */}
-                      <div className="pt-1 space-y-2">
+                      <div className="pt-1 space-y-2 border-t border-surface-container">
                         <div className="flex items-center justify-between">
                           <label className="text-[10px] font-bold text-on-surface-variant">Adjust Marks:</label>
                           <span className="text-xs font-bold text-primary">
