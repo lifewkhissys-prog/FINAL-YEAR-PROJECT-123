@@ -80,17 +80,18 @@ def extract_metadata_from_text(full_text: str) -> dict:
         "programme": None
     }
 
-    # 1. Extract Index Number (Strict format: 5 to 10 digits, or standard student ID)
+    # 1. Extract Index Number (MUST contain at least 5 digits or standard student ID format)
     index_patterns = [
-        r"(?i)(?:index\s+no\.?|index\s+number|student\s+id|student\s+no\.?|student\s+number|reg\.?\s+no\.?|registration\s+number|id\s+number)\s*[:\-\s]+\s*(\d{5,10}|[A-Z0-9\/\-]{5,20})",
-        r"(?i)\b(\d{6,10})\b",
-        r"(?i)\b([A-Z]{2}\d{5,8}|PG\d{5,8}|BC\d{5,8}|UE\d{5,8}|PS\d{5,8})\b"
+        r"(?i)(?:index\s+no\.?|index\s+number|student\s+id|student\s+no\.?|student\s+number|reg\.?\s+no\.?|registration\s+number|id\s+number)\s*[:\-\s]*\n?\s*(\d{5,10})",
+        r"\b(\d{6,10})\b",
+        r"\b([A-Z]{2}\d{5,8}|PG\d{5,8}|BC\d{5,8}|UE\d{5,8}|PS\d{5,8})\b"
     ]
     for pat in index_patterns:
         m = re.search(pat, cover_text)
         if m:
             val = m.group(1).strip()
-            if re.match(r"^(\d{5,10}|[A-Z0-9\/\-]{5,20})$", val, re.IGNORECASE) and not re.search(r"(?i)\b(name|index|number|by|title)\b", val):
+            # Require at least 5 digits and no header words
+            if re.search(r"\d{5,10}", val) and not re.search(r"(?i)\b(name|index|number|by|title|documented)\b", val):
                 extracted["index_number"] = val
                 break
 
