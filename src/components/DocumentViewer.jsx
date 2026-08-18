@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { renderAsync } from 'docx-preview';
 import { authFetch } from '../api/axiosInstance';
 
-// 4-Tier Fuzzy DOM text block locator for evidence quotes
+// 4-Tier Fuzzy DOM text & figure image block locator for evidence quotes
 function findMatchingDomElement(container, quote) {
   if (!container || !quote) return null;
 
@@ -10,8 +10,8 @@ function findMatchingDomElement(container, quote) {
   const normQuote = norm(quote);
   if (!normQuote || normQuote.length < 4) return null;
 
-  // Gather structural paragraph block containers inside rendered docx
-  const blocks = Array.from(container.querySelectorAll('p, td, li, section.docx > div'));
+  // Gather structural paragraph block containers & figures inside rendered docx
+  const blocks = Array.from(container.querySelectorAll('p, td, li, figure, section.docx > div'));
   if (blocks.length === 0) return null;
 
   // Tier 1: Full text substring match
@@ -49,6 +49,29 @@ function findMatchingDomElement(container, quote) {
       if (norm(block.textContent).includes(phraseEnd)) return block;
     }
   }
+
+  return null;
+}
+
+// Locate image / figure element associated with a text block
+function findAssociatedImageElement(block) {
+  if (!block) return null;
+  // 1. Direct child img
+  const directImg = block.querySelector('img');
+  if (directImg) return directImg;
+
+  // 2. Parent container img
+  if (block.parentElement) {
+    const parentImg = block.parentElement.querySelector('img');
+    if (parentImg) return parentImg;
+  }
+
+  // 3. Next or previous sibling img
+  const nextImg = block.nextElementSibling?.querySelector('img') || (block.nextElementSibling?.tagName === 'IMG' ? block.nextElementSibling : null);
+  if (nextImg) return nextImg;
+
+  const prevImg = block.previousElementSibling?.querySelector('img') || (block.previousElementSibling?.tagName === 'IMG' ? block.previousElementSibling : null);
+  if (prevImg) return prevImg;
 
   return null;
 }
@@ -162,11 +185,11 @@ export default function DocumentViewer({
     };
   }, [submissionId]);
 
-  // Effect: Highlight single active quote inside rendered Word document (.docx)
+  // Effect: Highlight single active quote & associated figure images inside rendered Word document (.docx)
   useEffect(() => {
     if (docType !== 'docx' || !docxContainerRef.current || loading) return;
 
-    // Reset existing active highlights
+    // Reset existing active highlights & image outlines
     const prevHighlights = docxContainerRef.current.querySelectorAll('.docx-active-highlight');
     prevHighlights.forEach(el => {
       el.classList.remove('docx-active-highlight');
@@ -175,6 +198,15 @@ export default function DocumentViewer({
       el.style.padding = '';
       el.style.borderRadius = '';
       el.style.boxShadow = '';
+      el.style.outline = '';
+    });
+
+    const prevImgOutlines = docxContainerRef.current.querySelectorAll('img.docx-img-highlight');
+    prevImgOutlines.forEach(img => {
+      img.classList.remove('docx-img-highlight');
+      img.style.outline = '';
+      img.style.boxShadow = '';
+      img.style.borderRadius = '';
     });
 
     if (!activeQuoteHighlight) return;
@@ -190,17 +222,27 @@ export default function DocumentViewer({
       matchedEl.style.boxShadow = '0 0 0 1px rgba(245, 158, 11, 0.3)';
       matchedEl.style.transition = 'all 0.3s ease';
 
+      // Highlight associated figure image if present
+      const associatedImg = findAssociatedImageElement(matchedEl);
+      if (associatedImg) {
+        associatedImg.classList.add('docx-img-highlight');
+        associatedImg.style.outline = '4px solid #f59e0b';
+        associatedImg.style.borderRadius = '8px';
+        associatedImg.style.boxShadow = '0 0 25px rgba(245, 158, 11, 0.5)';
+        associatedImg.style.transition = 'all 0.3s ease';
+      }
+
       setTimeout(() => {
-        matchedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        (associatedImg || matchedEl).scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     }
   }, [activeQuoteHighlight, docType, loading]);
 
-  // Effect: Highlight ALL cited quotes in Full Manuscript mode + Attach Hover Tooltip & Click Listeners
+  // Effect: Highlight ALL cited quotes & figures in Full Manuscript mode + Attach Hover Tooltip & Click Listeners
   useEffect(() => {
     if (docType !== 'docx' || !docxContainerRef.current || loading || !allHighlights || allHighlights.length === 0) return;
 
-    // Reset previous all-quote highlights
+    // Reset previous all-quote highlights & image highlights
     const prevAll = docxContainerRef.current.querySelectorAll('.docx-all-quote-highlight');
     prevAll.forEach(el => {
       el.classList.remove('docx-all-quote-highlight');
@@ -210,6 +252,17 @@ export default function DocumentViewer({
       el.onmouseenter = null;
       el.onmouseleave = null;
       el.onclick = null;
+    });
+
+    const prevImgs = docxContainerRef.current.querySelectorAll('img.docx-all-img-highlight');
+    prevImgs.forEach(img => {
+      img.classList.remove('docx-all-img-highlight');
+      img.style.outline = '';
+      img.style.boxShadow = '';
+      img.style.cursor = '';
+      img.onmouseenter = null;
+      img.onmouseleave = null;
+      img.onclick = null;
     });
 
     allHighlights.forEach(item => {
@@ -222,26 +275,39 @@ export default function DocumentViewer({
         matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.18)';
         matchedEl.style.borderBottom = '2px dashed #f59e0b';
         matchedEl.style.cursor = 'pointer';
-        matchedEl.setAttribute('data-subcrit-id', item.sub_criterion_id);
 
-        // Add hover popover listeners
-        matchedEl.onmouseenter = (e) => {
-          const rect = matchedEl.getBoundingClientRect();
-          setHoveredResult({
-            item,
-            x: rect.left + rect.width / 2,
-            y: rect.top - 8
-          });
+        const setupHoverAndClick = (targetEl) => {
+          targetEl.onmouseenter = () => {
+            const rect = targetEl.getBoundingClientRect();
+            setHoveredResult({
+              item,
+              x: rect.left + rect.width / 2,
+              y: rect.top - 8
+            });
+          };
+          targetEl.onmouseleave = () => {
+            setHoveredResult(null);
+          };
+          targetEl.onclick = (e) => {
+            e.stopPropagation();
+            if (onSelectSubCriterion) {
+              onSelectSubCriterion(item.sub_criterion_id);
+            }
+          };
         };
-        matchedEl.onmouseleave = () => {
-          setHoveredResult(null);
-        };
-        matchedEl.onclick = (e) => {
-          e.stopPropagation();
-          if (onSelectSubCriterion) {
-            onSelectSubCriterion(item.sub_criterion_id);
-          }
-        };
+
+        setupHoverAndClick(matchedEl);
+
+        // Also highlight associated figure diagram image if available
+        const associatedImg = findAssociatedImageElement(matchedEl);
+        if (associatedImg) {
+          associatedImg.classList.add('docx-all-img-highlight');
+          associatedImg.style.outline = '3px dashed #f59e0b';
+          associatedImg.style.borderRadius = '6px';
+          associatedImg.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.3)';
+          associatedImg.style.cursor = 'pointer';
+          setupHoverAndClick(associatedImg);
+        }
       }
     });
   }, [allHighlights, docType, loading, onSelectSubCriterion]);
@@ -387,7 +453,7 @@ export default function DocumentViewer({
             )}
 
             <div className="text-[9px] text-slate-400 italic flex items-center justify-between pt-1 border-t border-slate-800">
-              <span>Click highlight to jump to evaluation card</span>
+              <span>Click highlight or figure to jump to evaluation card</span>
               <span className="material-symbols-outlined text-xs">touch_app</span>
             </div>
           </div>
