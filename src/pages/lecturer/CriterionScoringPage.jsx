@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import NavigationHeader from '../../components/NavigationHeader';
 import DocumentViewer from '../../components/DocumentViewer';
@@ -27,24 +27,12 @@ export default function CriterionScoringPage() {
 
   const [activeChapter, setActiveChapter] = useState(initialChapter);
   const [results, setResults] = useState([]);
-  const [chapterText, setChapterText] = useState('');
   const [loadingResults, setLoadingResults] = useState(true);
-  const [loadingText, setLoadingText] = useState(true);
   const [overrideScores, setOverrideScores] = useState({});
   const [activeQuoteHighlight, setActiveQuoteHighlight] = useState('');
   const [highlightedSubCritId, setHighlightedSubCritId] = useState(null);
-  // Toggle between 'text' (extracted formatted text with highlights) and 'document' (PDF/DOCX file viewer)
-  const [viewMode, setViewMode] = useState('text');
-
 
   const documentReaderRef = useRef(null);
-  const baseURL = import.meta.env.VITE_API_BASE_URL || '';
-
-  // Build the PDF viewer URL using auth token
-  const pdfViewerUrl = useMemo(() => {
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
-    return `${baseURL}/api/submissions/${id}/document?token=${encodeURIComponent(token)}`;
-  }, [id, baseURL]);
 
   // Sync active chapter from URL parameter
   useEffect(() => {
@@ -55,20 +43,15 @@ export default function CriterionScoringPage() {
     }
   }, [location.search]);
 
-  // Load Chapter Results & Chapter Text
+  // Load Chapter Results
   useEffect(() => {
     async function loadData() {
       setLoadingResults(true);
-      setLoadingText(true);
       setActiveQuoteHighlight('');
       setHighlightedSubCritId(null);
 
       try {
-        const [resultsRes, textRes] = await Promise.all([
-          authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`),
-          authFetch(`/api/submissions/${id}/chapter-text/${activeChapter}`),
-        ]);
-
+        const resultsRes = await authFetch(`/api/submissions/${id}/results/by-chapter/${activeChapter}`);
         if (resultsRes.ok) {
           const data = await safeJson(resultsRes);
           if (data) {
@@ -85,16 +68,10 @@ export default function CriterionScoringPage() {
             setOverrideScores(overrides);
           }
         }
-
-        if (textRes.ok) {
-          const tData = await safeJson(textRes);
-          if (tData) setChapterText(tData.text || '');
-        }
       } catch (err) {
         console.error("Error loading chapter evaluation data:", err);
       } finally {
         setLoadingResults(false);
-        setLoadingText(false);
       }
     }
     loadData();
@@ -140,43 +117,12 @@ export default function CriterionScoringPage() {
     }
   };
 
-  // Fuzzy paragraph matching for highlight
-  const findMatchingParagraphIdx = (paragraphs, quote) => {
-    if (!quote || !paragraphs.length) return -1;
-    const norm = (s) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const normQuote = norm(quote);
-    const searchKey = normQuote.slice(0, 60);
-    if (searchKey.length < 8) return -1;
-
-    for (let i = 0; i < paragraphs.length; i++) {
-      if (norm(paragraphs[i]).includes(searchKey)) return i;
-    }
-    const shortKey = normQuote.slice(0, 25);
-    for (let i = 0; i < paragraphs.length; i++) {
-      if (norm(paragraphs[i]).includes(shortKey)) return i;
-    }
-    return -1;
-  };
-
-  // Highlight & scroll to matching paragraph in the reader
+  // Highlight quote in Document View
   const handleHighlightQuote = (subCritId, quote) => {
     if (!quote) return;
-    // Switch to text view so the highlight is visible
-    setViewMode('text');
     const cleanQuote = quote.replace(/^["']|["']$/g, '').trim();
     setActiveQuoteHighlight(cleanQuote);
     setHighlightedSubCritId(subCritId);
-
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        const el = document.getElementById('grammarly-active-highlight');
-        if (el && documentReaderRef.current) {
-          const container = documentReaderRef.current;
-          const elTop = el.offsetTop - container.offsetTop;
-          container.scrollTo({ top: elTop - 80, behavior: 'smooth' });
-        }
-      }, 200);
-    });
   };
 
   const chapterSubtotal = results.reduce((acc, r) => {
@@ -185,15 +131,6 @@ export default function CriterionScoringPage() {
   }, 0);
   const chapterMaxTotal = results.reduce((acc, r) => acc + (r.max_marks || 0), 0);
   const unscoredCount = results.length - results.filter(r => (overrideScores[r.sub_criterion_id] ?? r.ai_score) !== null).length;
-
-  const textParagraphs = useMemo(() => {
-    if (!chapterText) return [];
-    return chapterText.split('\n\n').map(p => p.trim()).filter(p => p.length > 0);
-  }, [chapterText]);
-
-  const highlightedParaIdx = useMemo(() => {
-    return findMatchingParagraphIdx(textParagraphs, activeQuoteHighlight);
-  }, [textParagraphs, activeQuoteHighlight]);
 
   const isFullManuscript = activeChapter === 'all';
   const activeChapterLabel = CHAPTERS.find(c => c.key === activeChapter)?.label || activeChapter;
@@ -247,7 +184,7 @@ export default function CriterionScoringPage() {
           className="w-full lg:flex-1 bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-sm overflow-hidden flex flex-col"
           style={{ minHeight: 0 }}
         >
-          {/* Reader Header with View Mode Toggle */}
+          {/* Reader Header */}
           <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2.5 shrink-0 bg-surface-container-lowest">
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-base">
@@ -257,107 +194,17 @@ export default function CriterionScoringPage() {
                 {activeChapterLabel}
               </h2>
             </div>
-
-            <div className="flex items-center gap-2">
-              {activeQuoteHighlight && viewMode === 'text' && (
-                <button
-                  onClick={() => { setActiveQuoteHighlight(''); setHighlightedSubCritId(null); }}
-                  className="text-[9px] font-bold text-on-surface bg-surface-container hover:bg-surface-container-high px-2 py-1 rounded-full flex items-center gap-1 transition-colors border border-surface-container-highest"
-                >
-                  <span className="material-symbols-outlined text-[10px]">close</span>
-                  Clear Highlight
-                </button>
-              )}
-              {/* View mode toggle */}
-              <div className="flex bg-surface-container rounded-lg p-0.5 border border-surface-container-highest">
-                <button
-                  onClick={() => setViewMode('document')}
-                  className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-all ${
-                    viewMode === 'document'
-                      ? 'bg-primary text-on-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-primary'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-xs">picture_as_pdf</span>
-                  Document
-                </button>
-                <button
-                  onClick={() => setViewMode('text')}
-                  className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition-all ${
-                    viewMode === 'text'
-                      ? 'bg-primary text-on-primary shadow-sm'
-                      : 'text-on-surface-variant hover:text-primary'
-                  }`}
-                >
-                  <span className="material-symbols-outlined text-xs">text_snippet</span>
-                  Text View
-                </button>
-              </div>
-            </div>
           </div>
 
-          {/* Reader Content */}
+          {/* Reader Content: Dedicated Document Viewer */}
           <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-            {viewMode === 'document' ? (
-              <DocumentViewer submissionId={id} className="h-full" />
-            ) : (
-
-              /* Text View — extracted text with highlight support */
-              <div className="px-6 py-5">
-                {loadingText ? (
-                  <div className="py-16 text-center text-on-surface-variant text-xs flex items-center justify-center gap-2">
-                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
-                    Loading manuscript text...
-                  </div>
-                ) : textParagraphs.length === 0 ? (
-                  <div className="py-16 text-center text-on-surface-variant text-xs italic">
-                    No extracted text available for this section.
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-w-none">
-                    {textParagraphs.map((para, pIdx) => {
-                      const isHighlightedPara = pIdx === highlightedParaIdx;
-                      const isHeading = para.length < 120 && (
-                        /^(chapter|section|\d+\.)\s/i.test(para) || para === para.toUpperCase()
-                      );
-
-                      if (isHighlightedPara) {
-                        return (
-                          <div
-                            key={pIdx}
-                            id="grammarly-active-highlight"
-                            className="px-4 py-3 rounded-lg border-l-4 my-2 transition-all duration-300"
-                            style={{
-                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
-                              borderLeftColor: '#f59e0b',
-                              boxShadow: '0 0 0 1px rgba(245, 158, 11, 0.25), 0 2px 8px rgba(245, 158, 11, 0.1)'
-                            }}
-                          >
-                            <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#92400e' }}>
-                              <span className="material-symbols-outlined text-xs">format_quote</span>
-                              Cited Evidence — Sub-Criterion #{highlightedSubCritId}
-                            </div>
-                            <p className="text-on-surface font-serif text-[13px] leading-relaxed">{para}</p>
-                          </div>
-                        );
-                      }
-
-                      if (isHeading) {
-                        return (
-                          <h3 key={pIdx} className="font-serif text-sm font-bold text-primary pt-4 pb-1 border-b border-surface-container">
-                            {para}
-                          </h3>
-                        );
-                      }
-
-                      return (
-                        <p key={pIdx} className="text-on-surface font-serif text-[13px] leading-relaxed text-justify">{para}</p>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+            <DocumentViewer
+              submissionId={id}
+              className="h-full"
+              activeQuoteHighlight={activeQuoteHighlight}
+              highlightedSubCritId={highlightedSubCritId}
+              onClearHighlight={() => { setActiveQuoteHighlight(''); setHighlightedSubCritId(null); }}
+            />
           </div>
         </section>
 
@@ -432,60 +279,46 @@ export default function CriterionScoringPage() {
                         </div>
                       </div>
 
-                      {/* Rubric Anchors */}
-                      <div className="grid grid-cols-3 gap-1.5 text-[9px] bg-surface-container-low p-1.5 rounded-lg border border-surface-container">
-                        <div><span className="font-bold text-error block">Low:</span><p className="text-on-surface-variant">{item.level_low_desc || '—'}</p></div>
-                        <div><span className="font-bold text-warning block">Mid:</span><p className="text-on-surface-variant">{item.level_mid_desc || '—'}</p></div>
-                        <div><span className="font-bold text-success block">High:</span><p className="text-on-surface-variant">{item.level_high_desc || '—'}</p></div>
-                      </div>
+                      {/* Evidence Quote Button */}
+                      {item.evidence_quote && (
+                        <div className="bg-surface-container-low p-2.5 rounded-lg border border-surface-container">
+                          <div className="text-[8px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Evidence Quote</div>
+                          <p className="text-[11px] font-serif italic text-on-surface line-clamp-3 leading-relaxed mb-2">
+                            "{item.evidence_quote}"
+                          </p>
+                          <button
+                            onClick={() => handleHighlightQuote(item.sub_criterion_id, item.evidence_quote)}
+                            className="w-full py-1 px-2 bg-surface-container hover:bg-surface-container-high text-primary text-[10px] font-bold rounded flex items-center justify-center gap-1 transition-colors border border-surface-container-highest"
+                          >
+                            <span className="material-symbols-outlined text-xs text-amber-500">search</span>
+                            Highlight Evidence in Document
+                          </button>
+                        </div>
+                      )}
 
-                      {/* Cited Evidence & Highlight Button */}
-                      <div className="p-2.5 bg-surface-container-low rounded-lg space-y-1.5" style={{ borderLeft: '3px solid var(--accent, #2563EB)' }}>
+                      {/* Score Override Slider & Controls */}
+                      <div className="pt-1 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[8px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[9px]">format_quote</span>Evidence
-                          </span>
-                          {item.cited_text && (
-                            <button
-                              type="button"
-                              onClick={() => handleHighlightQuote(item.sub_criterion_id, item.cited_text)}
-                              className="text-[9px] font-bold text-primary bg-surface-container hover:bg-surface-container-high px-2 py-0.5 rounded flex items-center gap-1 transition-colors border border-surface-container-highest"
-                            >
-                              <span className="material-symbols-outlined text-[10px]">find_in_page</span>
-                              Highlight in Manuscript
-                            </button>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-on-surface leading-relaxed font-sans whitespace-pre-wrap p-1.5 bg-surface-container-lowest rounded border border-surface-container max-h-16 overflow-y-auto">
-                          "{item.cited_text || 'No verbatim quote tagged.'}"
-                        </div>
-                      </div>
-
-                      {/* AI Justification */}
-                      <div className="text-[9px] text-on-surface-variant leading-relaxed p-2 bg-surface-container-low rounded-lg border border-surface-container">
-                        <span className="font-bold text-primary block mb-0.5 text-[8px] uppercase tracking-wider">Justification:</span>
-                        <span className="text-on-surface">{item.ai_justification}</span>
-                      </div>
-
-                      {/* Score Override */}
-                      <div className="pt-2 border-t border-surface-container flex items-center justify-between gap-2">
-                        <div className="flex-1 flex items-center gap-2">
-                          <label className="text-[9px] font-bold text-on-surface-variant shrink-0">Score:</label>
-                          <input
-                            type="range" min="0" max={item.max_marks} step="0.5"
-                            value={currentScore != null ? currentScore : 0}
-                            onChange={(e) => handleScoreChange(item.sub_criterion_id, e.target.value)}
-                            className="w-full h-1.5 bg-surface-container rounded-lg appearance-none cursor-pointer accent-primary"
-                          />
-                          <span className="text-[10px] font-bold text-primary w-12 text-right">
-                            {currentScore != null ? currentScore : 0}/{item.max_marks}
+                          <label className="text-[10px] font-bold text-on-surface-variant">Adjust Marks:</label>
+                          <span className="text-xs font-bold text-primary">
+                            {currentScore !== null ? currentScore : 0} / {item.max_marks}
                           </span>
                         </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max={item.max_marks}
+                          step="0.5"
+                          value={currentScore !== null ? currentScore : 0}
+                          onChange={(e) => handleScoreChange(item.sub_criterion_id, e.target.value)}
+                          className="w-full accent-primary cursor-pointer"
+                        />
                         <button
                           onClick={() => handleSaveOverride(item.sub_criterion_id)}
-                          className="px-2.5 py-1 bg-primary text-on-primary text-[9px] font-bold rounded-lg hover:opacity-90 transition-opacity shrink-0"
+                          className="w-full py-1.5 bg-primary text-on-primary font-bold text-[11px] rounded-lg hover:opacity-90 transition-opacity shadow-xs flex items-center justify-center gap-1"
                         >
-                          Save
+                          <span className="material-symbols-outlined text-xs">save</span>
+                          Save Score Adjustment
                         </button>
                       </div>
                     </div>
