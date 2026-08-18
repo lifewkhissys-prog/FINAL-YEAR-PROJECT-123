@@ -84,8 +84,8 @@ export default function CriterionScoringPage() {
         const el = document.getElementById(`sub-crit-${targetSubCritId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
-          setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 3000);
+          el.classList.add('ring-2', 'ring-amber-500', 'ring-offset-2');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-amber-500', 'ring-offset-2'), 3000);
         }
       }, 300);
       return () => clearTimeout(timer);
@@ -125,6 +125,17 @@ export default function CriterionScoringPage() {
     setHighlightedSubCritId(subCritId);
   };
 
+  // Select sub-criterion directly from document click
+  const handleSelectSubCriterionFromDoc = (subCritId) => {
+    setHighlightedSubCritId(subCritId);
+    setTimeout(() => {
+      const el = document.getElementById(`sub-crit-${subCritId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+  };
+
   const chapterSubtotal = results.reduce((acc, r) => {
     const scoreVal = overrideScores[r.sub_criterion_id] !== undefined ? overrideScores[r.sub_criterion_id] : r.ai_score;
     return acc + (scoreVal || 0);
@@ -136,7 +147,7 @@ export default function CriterionScoringPage() {
   const activeChapterLabel = CHAPTERS.find(c => c.key === activeChapter)?.label || activeChapter;
 
   return (
-    <div className="min-h-screen bg-background text-on-surface font-body flex flex-col">
+    <div className="h-screen max-h-screen bg-background text-on-surface font-body flex flex-col overflow-hidden">
       <NavigationHeader />
 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden max-w-[1600px] w-full mx-auto p-4 md:p-5 gap-4" style={{ height: 'calc(100vh - 64px)' }}>
@@ -210,196 +221,196 @@ export default function CriterionScoringPage() {
           </div>
 
           {/* Reader Content: Dedicated Document Viewer */}
-          <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+          <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
             <DocumentViewer
               submissionId={id}
               className="h-full"
               activeQuoteHighlight={activeQuoteHighlight}
               highlightedSubCritId={highlightedSubCritId}
+              allHighlights={isFullManuscript ? results : []}
+              onSelectSubCriterion={handleSelectSubCriterionFromDoc}
               onClearHighlight={() => { setActiveQuoteHighlight(''); setHighlightedSubCritId(null); }}
             />
           </div>
         </section>
 
         {/* Right Pane: Evaluation Scoring Panel */}
-        {!isFullManuscript && (
-          <aside className="w-full lg:w-[400px] bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-sm overflow-hidden flex flex-col shrink-0" style={{ minHeight: 0, height: '100%' }}>
-            
-            {/* Eval Header */}
-            <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2 shrink-0 bg-surface-container-lowest z-10">
-              <div>
-                <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Evaluation</div>
-                <h2 className="font-serif text-sm font-bold text-primary">{activeChapterLabel}</h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="bg-surface-container-low px-2 py-0.5 rounded-lg border border-surface-container text-right">
-                  <span className="text-[8px] font-bold text-on-surface-variant uppercase block">Subtotal</span>
-                  <span className="text-xs font-bold text-primary">
-                    {chapterSubtotal.toFixed(1)} / {chapterMaxTotal.toFixed(1)}
-                  </span>
-                </div>
-                <button
-                  onClick={() => navigate(`/thesis/submission/${id}/verification`)}
-                  className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded-lg hover:opacity-90 transition-opacity shadow-xs flex items-center gap-0.5"
-                >
-                  <span>Verification</span>
-                  <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                </button>
-              </div>
+        <aside className="w-full lg:w-[400px] bg-surface-container-lowest border border-surface-container-highest rounded-xl shadow-sm overflow-hidden flex flex-col shrink-0" style={{ minHeight: 0, height: '100%' }}>
+          
+          {/* Eval Header */}
+          <div className="flex items-center justify-between border-b border-surface-container-high px-4 py-2 shrink-0 bg-surface-container-lowest z-10">
+            <div>
+              <div className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Evaluation</div>
+              <h2 className="font-serif text-sm font-bold text-primary">{activeChapterLabel}</h2>
             </div>
+            <div className="flex items-center gap-2">
+              <div className="bg-surface-container-low px-2 py-0.5 rounded-lg border border-surface-container text-right">
+                <span className="text-[8px] font-bold text-on-surface-variant uppercase block">Subtotal</span>
+                <span className="text-xs font-bold text-primary">
+                  {chapterSubtotal.toFixed(1)} / {chapterMaxTotal.toFixed(1)}
+                </span>
+              </div>
+              <button
+                onClick={() => navigate(`/thesis/submission/${id}/verification`)}
+                className="px-2 py-1 bg-primary text-on-primary text-[10px] font-bold rounded-lg hover:opacity-90 transition-opacity shadow-xs flex items-center gap-0.5"
+              >
+                <span>Verification</span>
+                <span className="material-symbols-outlined text-xs">arrow_forward</span>
+              </button>
+            </div>
+          </div>
 
-            {/* Eval Body — Independent Scroll Container */}
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
-              {loadingResults ? (
-                <div className="py-12 text-center text-on-surface-variant text-xs flex items-center justify-center gap-2">
-                  <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
-                  Loading criteria...
-                </div>
-              ) : results.length === 0 ? (
-                <div className="py-12 text-center text-on-surface-variant text-xs italic">
-                  No sub-criteria mapped to this chapter.
-                </div>
-              ) : (
-                results.map((item, idx) => {
-                  const currentScore = overrideScores[item.sub_criterion_id] !== undefined
-                    ? overrideScores[item.sub_criterion_id]
-                    : item.ai_score;
-                  const isCardHighlighted = highlightedSubCritId === item.sub_criterion_id;
+          {/* Eval Body — Independent Scroll Container */}
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
+            {loadingResults ? (
+              <div className="py-12 text-center text-on-surface-variant text-xs flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                Loading criteria...
+              </div>
+            ) : results.length === 0 ? (
+              <div className="py-12 text-center text-on-surface-variant text-xs italic">
+                No sub-criteria mapped to this section.
+              </div>
+            ) : (
+              results.map((item, idx) => {
+                const currentScore = overrideScores[item.sub_criterion_id] !== undefined
+                  ? overrideScores[item.sub_criterion_id]
+                  : item.ai_score;
+                const isCardHighlighted = highlightedSubCritId === item.sub_criterion_id;
 
-                  return (
-                    <div
-                      key={idx}
-                      id={`sub-crit-${item.sub_criterion_id}`}
-                      className={`p-3.5 rounded-xl border transition-all duration-300 space-y-2.5 ${
-                        isCardHighlighted
-                          ? 'border-amber-400 dark:border-amber-600 bg-amber-50/70 dark:bg-amber-950/40 shadow-md ring-2 ring-amber-400/40 border-l-4 border-l-amber-500'
-                          : 'border-surface-container-highest bg-surface-container-lowest shadow-sm'
-                      }`}
-                    >
-                      {/* Title Header with Active Highlight Pill */}
-                      <div className="border-b border-surface-container pb-2">
-                        <div className="flex items-center justify-between gap-1 mb-0.5">
-                          <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.criterion_name}</span>
-                          {isCardHighlighted && (
-                            <span className="px-2 py-0.5 bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 font-bold text-[8px] rounded-full flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[9px]">auto_awesome</span>Active Highlight
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="font-serif text-[13px] font-bold text-primary leading-tight">{item.sub_criterion_name}</h3>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          {item.score_consistency_flag && (
-                            <span className="px-1.5 py-0.5 bg-warning-muted text-warning text-[8px] font-semibold rounded-full flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[9px]">warning</span>Disagreed
-                            </span>
-                          )}
-                          {item.ai_score != null ? (
-                            <span className="px-1.5 py-0.5 bg-surface-container text-primary font-bold text-[9px] rounded-full">
-                              AI: {item.ai_score}/{item.max_marks}
-                            </span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 bg-danger-muted text-error font-bold text-[8px] rounded-full flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[9px]">error</span>Not scored
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* AI Evaluation Breakdown / Critique */}
-                      {item.ai_justification && (
-                        <div className="bg-surface-container-low p-2.5 rounded-lg border border-surface-container space-y-1">
-                          <div className="text-[8px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[11px]">auto_awesome</span>
-                            Evaluation Breakdown & Critique
-                          </div>
-                          <p className="text-[11px] text-on-surface leading-relaxed whitespace-pre-line">
-                            {item.ai_justification}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Evidence Citation Quote & Highlight Button */}
-                      {(item.cited_text || item.evidence_quote) && (
-                        <div className="bg-amber-50/70 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-200/80 dark:border-amber-800/50 space-y-1.5">
-                          <div className="text-[8px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[11px] text-amber-600">format_quote</span>
-                            Evidence Citation
-                          </div>
-                          <p className="text-[11px] font-serif italic text-on-surface line-clamp-4 leading-relaxed">
-                            "{item.cited_text || item.evidence_quote}"
-                          </p>
-                          <button
-                            onClick={() => handleHighlightQuote(item.sub_criterion_id, item.cited_text || item.evidence_quote)}
-                            className="w-full py-1 px-2 bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 text-amber-900 dark:text-amber-200 text-[10px] font-bold rounded flex items-center justify-center gap-1 transition-colors border border-amber-300/80 dark:border-amber-700/80"
-                          >
-                            <span className="material-symbols-outlined text-xs text-amber-600">search</span>
-                            Highlight Evidence in Document
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Rubric Band Expectations (Level High/Mid/Low) */}
-                      {(item.level_high_desc || item.level_mid_desc || item.level_low_desc) && (
-                        <details className="bg-surface-container-low rounded-lg border border-surface-container text-[10px] group">
-                          <summary className="px-2.5 py-1.5 font-bold text-on-surface-variant cursor-pointer hover:text-primary flex items-center justify-between">
-                            <span>Rubric Scoring Guide</span>
-                            <span className="material-symbols-outlined text-xs group-open:rotate-180 transition-transform">expand_more</span>
-                          </summary>
-                          <div className="px-2.5 pb-2.5 pt-1 space-y-1.5 border-t border-surface-container">
-                            {item.level_high_desc && (
-                              <div>
-                                <span className="font-bold text-emerald-700 dark:text-emerald-400">High Level: </span>
-                                <span className="text-on-surface-variant">{item.level_high_desc}</span>
-                              </div>
-                            )}
-                            {item.level_mid_desc && (
-                              <div>
-                                <span className="font-bold text-amber-700 dark:text-amber-400">Mid Level: </span>
-                                <span className="text-on-surface-variant">{item.level_mid_desc}</span>
-                              </div>
-                            )}
-                            {item.level_low_desc && (
-                              <div>
-                                <span className="font-bold text-rose-700 dark:text-rose-400">Low Level: </span>
-                                <span className="text-on-surface-variant">{item.level_low_desc}</span>
-                              </div>
-                            )}
-                          </div>
-                        </details>
-                      )}
-
-                      {/* Score Override Slider & Controls */}
-                      <div className="pt-1 space-y-2 border-t border-surface-container">
-                        <div className="flex items-center justify-between">
-                          <label className="text-[10px] font-bold text-on-surface-variant">Adjust Marks:</label>
-                          <span className="text-xs font-bold text-primary">
-                            {currentScore !== null ? currentScore : 0} / {item.max_marks}
+                return (
+                  <div
+                    key={idx}
+                    id={`sub-crit-${item.sub_criterion_id}`}
+                    className={`p-3.5 rounded-xl border transition-all duration-300 space-y-2.5 ${
+                      isCardHighlighted
+                        ? 'border-amber-400 dark:border-amber-500 bg-amber-50/90 dark:bg-amber-950/50 shadow-md ring-2 ring-amber-400/50 border-l-4 border-l-amber-500'
+                        : 'border-surface-container-highest bg-surface-container-lowest shadow-sm'
+                    }`}
+                  >
+                    {/* Title Header with Active Highlight Pill */}
+                    <div className="border-b border-surface-container pb-2">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.criterion_name}</span>
+                        {isCardHighlighted && (
+                          <span className="px-2 py-0.5 bg-amber-500 text-white font-bold text-[8px] rounded-full flex items-center gap-0.5 shadow-xs">
+                            <span className="material-symbols-outlined text-[9px]">auto_awesome</span>Active Highlight
                           </span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max={item.max_marks}
-                          step="0.5"
-                          value={currentScore !== null ? currentScore : 0}
-                          onChange={(e) => handleScoreChange(item.sub_criterion_id, e.target.value)}
-                          className="w-full accent-primary cursor-pointer"
-                        />
-                        <button
-                          onClick={() => handleSaveOverride(item.sub_criterion_id)}
-                          className="w-full py-1.5 bg-primary text-on-primary font-bold text-[11px] rounded-lg hover:opacity-90 transition-opacity shadow-xs flex items-center justify-center gap-1"
-                        >
-                          <span className="material-symbols-outlined text-xs">save</span>
-                          Save Score Adjustment
-                        </button>
+                        )}
+                      </div>
+                      <h3 className="font-serif text-[13px] font-bold text-primary leading-tight">{item.sub_criterion_name}</h3>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {item.score_consistency_flag && (
+                          <span className="px-1.5 py-0.5 bg-warning-muted text-warning text-[8px] font-semibold rounded-full flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[9px]">warning</span>Disagreed
+                          </span>
+                        )}
+                        {item.ai_score != null ? (
+                          <span className="px-1.5 py-0.5 bg-surface-container text-primary font-bold text-[9px] rounded-full">
+                            AI: {item.ai_score}/{item.max_marks}
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 bg-danger-muted text-error font-bold text-[8px] rounded-full flex items-center gap-0.5">
+                            <span className="material-symbols-outlined text-[9px]">error</span>Not scored
+                          </span>
+                        )}
                       </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
-          </aside>
-        )}
+
+                    {/* AI Evaluation Breakdown / Critique */}
+                    {item.ai_justification && (
+                      <div className="bg-surface-container-low p-2.5 rounded-lg border border-surface-container space-y-1">
+                        <div className="text-[8px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[11px]">auto_awesome</span>
+                          Evaluation Breakdown & Critique
+                        </div>
+                        <p className="text-[11px] text-on-surface leading-relaxed whitespace-pre-line">
+                          {item.ai_justification}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Evidence Citation Quote & Highlight Button */}
+                    {(item.cited_text || item.evidence_quote) && (
+                      <div className="bg-amber-50 dark:bg-zinc-800 p-3 rounded-lg border border-amber-300 dark:border-zinc-600 space-y-2 shadow-xs">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs text-amber-600 dark:text-amber-400">format_quote</span>
+                          Evidence Citation
+                        </div>
+                        <p className="text-xs font-serif italic text-slate-900 dark:text-slate-100 leading-relaxed">
+                          "{item.cited_text || item.evidence_quote}"
+                        </p>
+                        <button
+                          onClick={() => handleHighlightQuote(item.sub_criterion_id, item.cited_text || item.evidence_quote)}
+                          className="w-full py-1.5 px-2 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-md flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                        >
+                          <span className="material-symbols-outlined text-xs text-white">search</span>
+                          Highlight Evidence in Document
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Rubric Band Expectations (Level High/Mid/Low) */}
+                    {(item.level_high_desc || item.level_mid_desc || item.level_low_desc) && (
+                      <details className="bg-surface-container-low rounded-lg border border-surface-container text-[10px] group">
+                        <summary className="px-2.5 py-1.5 font-bold text-on-surface-variant cursor-pointer hover:text-primary flex items-center justify-between">
+                          <span>Rubric Scoring Guide</span>
+                          <span className="material-symbols-outlined text-xs group-open:rotate-180 transition-transform">expand_more</span>
+                        </summary>
+                        <div className="px-2.5 pb-2.5 pt-1 space-y-1.5 border-t border-surface-container">
+                          {item.level_high_desc && (
+                            <div>
+                              <span className="font-bold text-emerald-700 dark:text-emerald-400">High Level: </span>
+                              <span className="text-on-surface-variant">{item.level_high_desc}</span>
+                            </div>
+                          )}
+                          {item.level_mid_desc && (
+                            <div>
+                              <span className="font-bold text-amber-700 dark:text-amber-400">Mid Level: </span>
+                              <span className="text-on-surface-variant">{item.level_mid_desc}</span>
+                            </div>
+                          )}
+                          {item.level_low_desc && (
+                            <div>
+                              <span className="font-bold text-rose-700 dark:text-rose-400">Low Level: </span>
+                              <span className="text-on-surface-variant">{item.level_low_desc}</span>
+                            </div>
+                          )}
+                        </div>
+                      </details>
+                    )}
+
+                    {/* Score Override Slider & Controls */}
+                    <div className="pt-1 space-y-2 border-t border-surface-container">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-bold text-on-surface-variant">Adjust Marks:</label>
+                        <span className="text-xs font-bold text-primary">
+                          {currentScore !== null ? currentScore : 0} / {item.max_marks}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max={item.max_marks}
+                        step="0.5"
+                        value={currentScore !== null ? currentScore : 0}
+                        onChange={(e) => handleScoreChange(item.sub_criterion_id, e.target.value)}
+                        className="w-full accent-primary cursor-pointer"
+                      />
+                      <button
+                        onClick={() => handleSaveOverride(item.sub_criterion_id)}
+                        className="w-full py-1.5 bg-primary text-on-primary font-bold text-[11px] rounded-lg hover:opacity-90 transition-opacity shadow-xs flex items-center justify-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-xs">save</span>
+                        Save Score Adjustment
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );

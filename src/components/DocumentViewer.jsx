@@ -7,12 +7,15 @@ export default function DocumentViewer({
   className = '',
   activeQuoteHighlight = '',
   highlightedSubCritId = null,
+  allHighlights = [],
+  onSelectSubCriterion = null,
   onClearHighlight = () => {}
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [docType, setDocType] = useState('unknown'); // 'pdf' | 'docx'
   const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [hoveredResult, setHoveredResult] = useState(null);
   const docxContainerRef = useRef(null);
 
   const baseURL = import.meta.env.VITE_API_BASE_URL || '';
@@ -108,11 +111,11 @@ export default function DocumentViewer({
     };
   }, [submissionId]);
 
-  // Effect: Highlight quote inside rendered Word document (.docx)
+  // Effect: Highlight single active quote inside rendered Word document (.docx)
   useEffect(() => {
     if (docType !== 'docx' || !docxContainerRef.current || loading) return;
 
-    // Reset existing highlights
+    // Reset existing active highlights
     const prevHighlights = docxContainerRef.current.querySelectorAll('.docx-active-highlight');
     prevHighlights.forEach(el => {
       el.classList.remove('docx-active-highlight');
@@ -157,7 +160,7 @@ export default function DocumentViewer({
 
     if (matchedEl) {
       matchedEl.classList.add('docx-active-highlight');
-      matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.22)';
+      matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.25)';
       matchedEl.style.borderLeft = '4px solid #f59e0b';
       matchedEl.style.padding = '8px 12px';
       matchedEl.style.borderRadius = '6px';
@@ -169,6 +172,63 @@ export default function DocumentViewer({
       }, 100);
     }
   }, [activeQuoteHighlight, docType, loading]);
+
+  // Effect: Highlight ALL cited quotes in Full Manuscript mode + Attach Hover Tooltip & Click Listeners
+  useEffect(() => {
+    if (docType !== 'docx' || !docxContainerRef.current || loading || !allHighlights || allHighlights.length === 0) return;
+
+    // Reset previous all-quote highlights
+    const prevAll = docxContainerRef.current.querySelectorAll('.docx-all-quote-highlight');
+    prevAll.forEach(el => {
+      el.classList.remove('docx-all-quote-highlight');
+      el.style.backgroundColor = '';
+      el.style.borderBottom = '';
+      el.style.cursor = '';
+    });
+
+    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+    const elements = Array.from(docxContainerRef.current.querySelectorAll('p, span, td, div'));
+
+    allHighlights.forEach(item => {
+      const quote = item.cited_text || item.evidence_quote;
+      if (!quote) return;
+      const searchKey = norm(quote).slice(0, 45);
+      if (searchKey.length < 5) return;
+
+      for (const el of elements) {
+        const txt = norm(el.textContent || '');
+        if (txt.includes(searchKey)) {
+          if (el.tagName === 'P' || el.tagName === 'TD' || el.children.length === 0) {
+            el.classList.add('docx-all-quote-highlight');
+            el.style.backgroundColor = 'rgba(245, 158, 11, 0.18)';
+            el.style.borderBottom = '2px dashed #f59e0b';
+            el.style.cursor = 'pointer';
+            el.setAttribute('data-subcrit-id', item.sub_criterion_id);
+
+            // Add hover popover listeners
+            el.onmouseenter = (e) => {
+              const rect = el.getBoundingClientRect();
+              setHoveredResult({
+                item,
+                x: rect.left + rect.width / 2,
+                y: rect.top - 8
+              });
+            };
+            el.onmouseleave = () => {
+              setHoveredResult(null);
+            };
+            el.onclick = (e) => {
+              e.stopPropagation();
+              if (onSelectSubCriterion) {
+                onSelectSubCriterion(item.sub_criterion_id);
+              }
+            };
+            break;
+          }
+        }
+      }
+    });
+  }, [allHighlights, docType, loading, onSelectSubCriterion]);
 
   return (
     <div className={`flex flex-col h-full w-full bg-surface-container-lowest overflow-hidden ${className}`}>
@@ -197,7 +257,7 @@ export default function DocumentViewer({
       {/* Quote Highlight Indicator Bar */}
       {activeQuoteHighlight && (
         <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 px-4 py-2 flex items-center justify-between text-xs shrink-0 z-10">
-          <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-medium truncate">
+          <div className="flex items-center gap-2 text-amber-950 dark:text-amber-200 font-medium truncate">
             <span className="material-symbols-outlined text-amber-600 text-sm shrink-0">format_quote</span>
             <span className="font-bold shrink-0">
               {highlightedSubCritId ? `Sub-Criterion #${highlightedSubCritId} Evidence:` : 'Cited Evidence:'}
@@ -275,6 +335,45 @@ export default function DocumentViewer({
               }
             `}</style>
             <div ref={docxContainerRef} className="w-full max-w-4xl" />
+          </div>
+        )}
+
+        {/* Floating Hover Tooltip Popover for AI Critique Breakdown */}
+        {hoveredResult && (
+          <div
+            className="fixed z-50 w-80 md:w-96 bg-slate-900 text-slate-100 p-4 rounded-xl shadow-2xl border border-slate-700 space-y-2 pointer-events-none transition-all transform -translate-x-1/2 -translate-y-full mb-2 animate-in fade-in zoom-in-95"
+            style={{
+              left: `${hoveredResult.x}px`,
+              top: `${hoveredResult.y}px`
+            }}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 truncate">
+                {hoveredResult.item.criterion_name}
+              </span>
+              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 font-bold text-[9px] rounded-full shrink-0">
+                AI Score: {hoveredResult.item.ai_score}/{hoveredResult.item.max_marks}
+              </span>
+            </div>
+            
+            <h4 className="font-serif text-xs font-bold text-white leading-tight">
+              {hoveredResult.item.sub_criterion_name}
+            </h4>
+
+            {hoveredResult.item.ai_justification && (
+              <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-200 leading-relaxed max-h-36 overflow-y-auto space-y-1">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[10px]">auto_awesome</span>
+                  AI Critique & Breakdown
+                </div>
+                <p className="whitespace-pre-line">{hoveredResult.item.ai_justification}</p>
+              </div>
+            )}
+
+            <div className="text-[9px] text-slate-400 italic flex items-center justify-between pt-1 border-t border-slate-800">
+              <span>Click highlight to jump to evaluation card</span>
+              <span className="material-symbols-outlined text-xs">touch_app</span>
+            </div>
           </div>
         )}
       </div>
