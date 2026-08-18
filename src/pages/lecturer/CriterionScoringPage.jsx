@@ -32,8 +32,9 @@ export default function CriterionScoringPage() {
   const [overrideScores, setOverrideScores] = useState({});
   const [activeQuoteHighlight, setActiveQuoteHighlight] = useState('');
   const [highlightedSubCritId, setHighlightedSubCritId] = useState(null);
-  // Toggle between 'document' (PDF viewer) and 'text' (extracted text with highlights)
-  const [viewMode, setViewMode] = useState('document');
+  // Toggle between 'text' (extracted formatted text with highlights) and 'document' (PDF/DOCX file viewer)
+  const [viewMode, setViewMode] = useState('text');
+
 
   const documentReaderRef = useRef(null);
   const baseURL = import.meta.env.VITE_API_BASE_URL || '';
@@ -297,14 +298,31 @@ export default function CriterionScoringPage() {
           {/* Reader Content */}
           <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
             {viewMode === 'document' ? (
-              /* PDF Document Viewer — shows original thesis with images, tables, formatting */
-              <iframe
-                src={pdfViewerUrl}
-                title="Thesis Document Viewer"
-                className="w-full h-full border-0"
-                style={{ minHeight: '600px', height: '100%' }}
-              />
+              /* PDF / Original Document Viewer */
+              <div className="w-full h-full flex flex-col">
+                <div className="bg-surface-container px-4 py-2 border-b border-surface-container-high flex items-center justify-between text-[11px] shrink-0">
+                  <span className="text-on-surface-variant">
+                    Original file stream. If your browser downloads Word (.docx) files instead of displaying inline, switch to <strong>Text View</strong>.
+                  </span>
+                  <a
+                    href={pdfViewerUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary font-bold hover:underline flex items-center gap-1 shrink-0"
+                  >
+                    <span className="material-symbols-outlined text-xs">open_in_new</span>
+                    Open Original File
+                  </a>
+                </div>
+                <iframe
+                  src={pdfViewerUrl}
+                  title="Thesis Document Viewer"
+                  className="w-full flex-1 border-0"
+                  style={{ minHeight: '600px' }}
+                />
+              </div>
             ) : (
+
               /* Text View — extracted text with highlight support */
               <div className="px-6 py-5">
                 {loadingText ? (
