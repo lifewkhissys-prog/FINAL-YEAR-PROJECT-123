@@ -2,6 +2,57 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { renderAsync } from 'docx-preview';
 import { authFetch } from '../api/axiosInstance';
 
+// 4-Tier Fuzzy DOM text block locator for evidence quotes
+function findMatchingDomElement(container, quote) {
+  if (!container || !quote) return null;
+
+  const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+  const normQuote = norm(quote);
+  if (!normQuote || normQuote.length < 4) return null;
+
+  // Gather structural paragraph block containers inside rendered docx
+  const blocks = Array.from(container.querySelectorAll('p, td, li, section.docx > div'));
+  if (blocks.length === 0) return null;
+
+  // Tier 1: Full text substring match
+  for (const block of blocks) {
+    const txt = norm(block.textContent);
+    if (txt.includes(normQuote)) return block;
+  }
+
+  // Tier 2: Head substring match (first 35 chars)
+  const headKey = normQuote.slice(0, 35);
+  if (headKey.length >= 8) {
+    for (const block of blocks) {
+      if (norm(block.textContent).includes(headKey)) return block;
+    }
+  }
+
+  // Tier 3: Middle substring match (35 chars from middle of quote)
+  if (normQuote.length > 45) {
+    const midStart = Math.floor((normQuote.length - 35) / 2);
+    const midKey = normQuote.slice(midStart, midStart + 35);
+    for (const block of blocks) {
+      if (norm(block.textContent).includes(midKey)) return block;
+    }
+  }
+
+  // Tier 4: Multi-word phrase anchor match (extract 4 consecutive key words)
+  const words = normQuote.split(' ').filter(w => w.length >= 4);
+  if (words.length >= 3) {
+    const phraseStart = words.slice(0, 4).join(' ');
+    for (const block of blocks) {
+      if (norm(block.textContent).includes(phraseStart)) return block;
+    }
+    const phraseEnd = words.slice(-4).join(' ');
+    for (const block of blocks) {
+      if (norm(block.textContent).includes(phraseEnd)) return block;
+    }
+  }
+
+  return null;
+}
+
 export default function DocumentViewer({
   submissionId,
   className = '',
@@ -128,35 +179,7 @@ export default function DocumentViewer({
 
     if (!activeQuoteHighlight) return;
 
-    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const normQuote = norm(activeQuoteHighlight);
-    const searchKey = normQuote.slice(0, 50);
-
-    if (!searchKey || searchKey.length < 5) return;
-
-    const elements = Array.from(docxContainerRef.current.querySelectorAll('p, span, td, div'));
-    let matchedEl = null;
-
-    for (const el of elements) {
-      const txt = norm(el.textContent || '');
-      if (txt.includes(searchKey)) {
-        if (el.tagName === 'P' || el.tagName === 'TD' || el.children.length === 0) {
-          matchedEl = el;
-          break;
-        }
-      }
-    }
-
-    if (!matchedEl) {
-      const shortKey = normQuote.slice(0, 25);
-      for (const el of elements) {
-        const txt = norm(el.textContent || '');
-        if (txt.includes(shortKey)) {
-          matchedEl = el;
-          break;
-        }
-      }
-    }
+    const matchedEl = findMatchingDomElement(docxContainerRef.current, activeQuoteHighlight);
 
     if (matchedEl) {
       matchedEl.classList.add('docx-active-highlight');
@@ -184,48 +207,41 @@ export default function DocumentViewer({
       el.style.backgroundColor = '';
       el.style.borderBottom = '';
       el.style.cursor = '';
+      el.onmouseenter = null;
+      el.onmouseleave = null;
+      el.onclick = null;
     });
-
-    const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-    const elements = Array.from(docxContainerRef.current.querySelectorAll('p, span, td, div'));
 
     allHighlights.forEach(item => {
       const quote = item.cited_text || item.evidence_quote;
       if (!quote) return;
-      const searchKey = norm(quote).slice(0, 45);
-      if (searchKey.length < 5) return;
 
-      for (const el of elements) {
-        const txt = norm(el.textContent || '');
-        if (txt.includes(searchKey)) {
-          if (el.tagName === 'P' || el.tagName === 'TD' || el.children.length === 0) {
-            el.classList.add('docx-all-quote-highlight');
-            el.style.backgroundColor = 'rgba(245, 158, 11, 0.18)';
-            el.style.borderBottom = '2px dashed #f59e0b';
-            el.style.cursor = 'pointer';
-            el.setAttribute('data-subcrit-id', item.sub_criterion_id);
+      const matchedEl = findMatchingDomElement(docxContainerRef.current, quote);
+      if (matchedEl) {
+        matchedEl.classList.add('docx-all-quote-highlight');
+        matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.18)';
+        matchedEl.style.borderBottom = '2px dashed #f59e0b';
+        matchedEl.style.cursor = 'pointer';
+        matchedEl.setAttribute('data-subcrit-id', item.sub_criterion_id);
 
-            // Add hover popover listeners
-            el.onmouseenter = (e) => {
-              const rect = el.getBoundingClientRect();
-              setHoveredResult({
-                item,
-                x: rect.left + rect.width / 2,
-                y: rect.top - 8
-              });
-            };
-            el.onmouseleave = () => {
-              setHoveredResult(null);
-            };
-            el.onclick = (e) => {
-              e.stopPropagation();
-              if (onSelectSubCriterion) {
-                onSelectSubCriterion(item.sub_criterion_id);
-              }
-            };
-            break;
+        // Add hover popover listeners
+        matchedEl.onmouseenter = (e) => {
+          const rect = matchedEl.getBoundingClientRect();
+          setHoveredResult({
+            item,
+            x: rect.left + rect.width / 2,
+            y: rect.top - 8
+          });
+        };
+        matchedEl.onmouseleave = () => {
+          setHoveredResult(null);
+        };
+        matchedEl.onclick = (e) => {
+          e.stopPropagation();
+          if (onSelectSubCriterion) {
+            onSelectSubCriterion(item.sub_criterion_id);
           }
-        }
+        };
       }
     });
   }, [allHighlights, docType, loading, onSelectSubCriterion]);
@@ -352,7 +368,7 @@ export default function DocumentViewer({
                 {hoveredResult.item.criterion_name}
               </span>
               <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 font-bold text-[9px] rounded-full shrink-0">
-                AI Score: {hoveredResult.item.ai_score}/{hoveredResult.item.max_marks}
+                AI: {hoveredResult.item.ai_score}/{hoveredResult.item.max_marks}
               </span>
             </div>
             
