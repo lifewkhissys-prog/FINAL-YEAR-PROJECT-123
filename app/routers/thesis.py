@@ -23,7 +23,12 @@ from app.models.thesis_critique import (
     PlagiarismCheck,
     GradedExample
 )
-from app.services.thesis_parser import parse_thesis_document, chunk_thesis_by_chapters, extract_document_structure
+from app.services.thesis_parser import (
+    parse_thesis_document,
+    chunk_thesis_by_chapters,
+    extract_document_structure,
+    extract_metadata_from_text,
+)
 from app.services.agent_pipeline import execute_thesis_assessment_pipeline
 from app.services.embeddings import generate_embedding
 from app.services.grading_scale import grade_for
@@ -310,7 +315,6 @@ async def create_submission(
             detail="Unable to extract text content from the uploaded file. Please ensure the PDF or DOCX file contains readable text."
         )
 
-    from app.services.thesis_parser import parse_thesis_document, extract_metadata_from_text
     auto_meta = extract_metadata_from_text(full_text)
 
     final_student_name = student_name.strip() if student_name and student_name.strip() else (auto_meta.get("student_name") or "Anonymous Student")
@@ -350,7 +354,6 @@ async def extract_metadata_endpoint(
         with open(temp_path, "wb") as f:
             f.write(content)
         
-        from app.services.thesis_parser import parse_thesis_document, extract_metadata_from_text
         full_text = parse_thesis_document(temp_path)
         meta = extract_metadata_from_text(full_text)
         return meta
