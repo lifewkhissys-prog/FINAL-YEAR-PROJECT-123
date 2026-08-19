@@ -549,70 +549,56 @@ Respond ONLY in this JSON format:
 
 async def call_synthesis_llm_async(prompt: str, system_prompt: str = "", max_tokens: int = 4000) -> str:
     """
-    Attempts AgentRouter / Claude Sonnet 5 first for high-quality academic synthesis.
-    Falls back seamlessly to Groq (openai/gpt-oss-120b) if AgentRouter is unavailable or unauthenticated.
+    Attempts AgentRouter OpenAI-compatible proxy first (claude-opus-5, claude-opus-4-8, gpt-5).
+    Falls back seamlessly to Groq (openai/gpt-oss-120b) if AgentRouter is flaky or returns 401.
     """
     agentrouter_key = getattr(settings, "AGENTROUTER_API_KEY", "")
     if agentrouter_key:
         try:
             import httpx
-            base_url = getattr(settings, "AGENTROUTER_BASE_URL", "https://agentrouter.org").rstrip("/").removesuffix("/v1")
-            
+            base_url = getattr(settings, "AGENTROUTER_BASE_URL", "https://agentrouter.org/v1").rstrip("/")
+            if not base_url.endswith("/v1"):
+                base_url = f"{base_url}/v1"
+
             headers = {
                 "Authorization": f"Bearer {agentrouter_key}",
-                "x-api-key": agentrouter_key,
-                "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
                 "User-Agent": "DevLab-Thesis-Assessor/1.0"
             }
             candidate_models = [
-                getattr(settings, "AGENTROUTER_MODEL", "claude-opus-4-6"),
-                "claude-opus-4-6",
+                getattr(settings, "AGENTROUTER_MODEL", "claude-opus-5"),
+                "claude-opus-5",
                 "claude-opus-4-8",
-                "claude-opus-4-7",
-                "anthropic/claude-sonnet-5",
-                "claude-3-5-sonnet-20241022"
+                "claude-opus-4-6",
+                "gpt-5",
+                "anthropic/claude-sonnet-5"
             ]
-            endpoints = [f"{base_url}/v1/messages", f"{base_url}/v1/chat/completions"]
 
-            for endpoint in endpoints:
-                for model_name in dict.fromkeys(candidate_models):
-                    is_anthropic_ep = endpoint.endswith("/messages")
-                    if is_anthropic_ep:
-                        payload = {
-                            "model": model_name,
-                            "max_tokens": max_tokens,
-                            "messages": [{"role": "user", "content": prompt}]
-                        }
-                        if system_prompt:
-                            payload["system"] = system_prompt
+            url = f"{base_url}/chat/completions"
+            for model_name in dict.fromkeys(candidate_models):
+                payload = {
+                    "model": model_name,
+                    "max_tokens": max_tokens,
+                    "temperature": 0.5,
+                    "messages": []
+                }
+                if system_prompt:
+                    payload["messages"].append({"role": "system", "content": system_prompt})
+                payload["messages"].append({"role": "user", "content": prompt})
+
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    res = await client.post(url, headers=headers, json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        if "choices" in data and len(data["choices"]) > 0:
+                            content = data["choices"][0]["message"].get("content", "")
+                            if content:
+                                logger.info("Successfully synthesized report via AgentRouter proxy (%s)", model_name)
+                                return content
                     else:
-                        payload = {
-                            "model": model_name,
-                            "max_tokens": max_tokens,
-                            "temperature": 0.5,
-                            "messages": []
-                        }
-                        if system_prompt:
-                            payload["messages"].append({"role": "system", "content": system_prompt})
-                        payload["messages"].append({"role": "user", "content": prompt})
-
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        res = await client.post(endpoint, headers=headers, json=payload)
-                        if res.status_code == 200:
-                            data = res.json()
-                            if is_anthropic_ep and "content" in data and len(data["content"]) > 0:
-                                text = data["content"][0].get("text", "")
-                                if text:
-                                    logger.info("Successfully synthesized report via AgentRouter Anthropic endpoint (%s)", model_name)
-                                    return text
-                            elif "choices" in data and len(data["choices"]) > 0:
-                                text = data["choices"][0]["message"].get("content", "")
-                                if text:
-                                    logger.info("Successfully synthesized report via AgentRouter OpenAI endpoint (%s)", model_name)
-                                    return text
+                        logger.warning("AgentRouter proxy model '%s' returned HTTP %s (%s). Trying next candidate...", model_name, res.status_code, res.text[:150])
         except Exception as e:
-            logger.warning("AgentRouter/Claude attempt failed: %s. Falling back to Groq.", e)
+            logger.warning("AgentRouter proxy attempt failed: %s. Falling back to Groq.", e)
 
     return await call_llm_async(
         prompt,

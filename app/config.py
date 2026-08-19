@@ -23,8 +23,8 @@ class Settings(BaseSettings):
 
     # AgentRouter / Claude API configuration
     AGENTROUTER_API_KEY: str = Field(default="")
-    AGENTROUTER_BASE_URL: str = Field(default="https://agentrouter.org")
-    AGENTROUTER_MODEL: str = Field(default="claude-opus-4-6")
+    AGENTROUTER_BASE_URL: str = Field(default="https://agentrouter.org/v1")
+    AGENTROUTER_MODEL: str = Field(default="claude-opus-5")
 
 
     CLOUDINARY_URL: str = Field(default="")
