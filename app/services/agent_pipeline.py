@@ -547,6 +547,83 @@ Respond ONLY in this JSON format:
         raise ScoringError(f"Stage 4 whole-document scoring failed: {err}") from err
 
 
+async def call_synthesis_llm_async(prompt: str, system_prompt: str = "", max_tokens: int = 4000) -> str:
+    """
+    Attempts AgentRouter / Claude Sonnet 5 first for high-quality academic synthesis.
+    Falls back seamlessly to Groq (openai/gpt-oss-120b) if AgentRouter is unavailable or unauthenticated.
+    """
+    agentrouter_key = getattr(settings, "AGENTROUTER_API_KEY", "")
+    if agentrouter_key:
+        try:
+            import httpx
+            base_url = getattr(settings, "AGENTROUTER_BASE_URL", "https://agentrouter.org").rstrip("/").removesuffix("/v1")
+            
+            headers = {
+                "Authorization": f"Bearer {agentrouter_key}",
+                "x-api-key": agentrouter_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+                "User-Agent": "DevLab-Thesis-Assessor/1.0"
+            }
+            candidate_models = [
+                getattr(settings, "AGENTROUTER_MODEL", "claude-opus-4-6"),
+                "claude-opus-4-6",
+                "claude-opus-4-8",
+                "claude-opus-4-7",
+                "anthropic/claude-sonnet-5",
+                "claude-3-5-sonnet-20241022"
+            ]
+            endpoints = [f"{base_url}/v1/messages", f"{base_url}/v1/chat/completions"]
+
+            for endpoint in endpoints:
+                for model_name in dict.fromkeys(candidate_models):
+                    is_anthropic_ep = endpoint.endswith("/messages")
+                    if is_anthropic_ep:
+                        payload = {
+                            "model": model_name,
+                            "max_tokens": max_tokens,
+                            "messages": [{"role": "user", "content": prompt}]
+                        }
+                        if system_prompt:
+                            payload["system"] = system_prompt
+                    else:
+                        payload = {
+                            "model": model_name,
+                            "max_tokens": max_tokens,
+                            "temperature": 0.5,
+                            "messages": []
+                        }
+                        if system_prompt:
+                            payload["messages"].append({"role": "system", "content": system_prompt})
+                        payload["messages"].append({"role": "user", "content": prompt})
+
+                    async with httpx.AsyncClient(timeout=60.0) as client:
+                        res = await client.post(endpoint, headers=headers, json=payload)
+                        if res.status_code == 200:
+                            data = res.json()
+                            if is_anthropic_ep and "content" in data and len(data["content"]) > 0:
+                                text = data["content"][0].get("text", "")
+                                if text:
+                                    logger.info("Successfully synthesized report via AgentRouter Anthropic endpoint (%s)", model_name)
+                                    return text
+                            elif "choices" in data and len(data["choices"]) > 0:
+                                text = data["choices"][0]["message"].get("content", "")
+                                if text:
+                                    logger.info("Successfully synthesized report via AgentRouter OpenAI endpoint (%s)", model_name)
+                                    return text
+        except Exception as e:
+            logger.warning("AgentRouter/Claude attempt failed: %s. Falling back to Groq.", e)
+
+    return await call_llm_async(
+        prompt,
+        system_prompt=system_prompt,
+        json_mode=False,
+        model=settings.GROQ_SYNTHESIS_MODEL,
+        temperature=0.5,
+        max_tokens=max_tokens
+    )
+
+
 async def run_narrative_synthesis(
     submission: ThesisSubmission,
     all_evidence: List[Dict[str, Any]],
@@ -661,12 +738,40 @@ STRICT CONSTRAINTS (CRITICAL):
    - "Evaluated based on chapter evidence"
    - "needs further refinement"
    - "lacks empirical backing"
-   - any generic sentence that would be equally true if the thesis title and dataset were swapped with a completely different topic.
-6. SPECIFICITY MANDATE: Every weakness, gap, and recommendation MUST name the exact dataset (e.g., CERT r4.2, MNIST, survey size), algorithm/method name (e.g., rule-based risk scoring, SVM, Random Forest), or section context from the gathered evidence above.
-7. AUTHORITATIVE STUDENT-FACING REPORT MANDATE: Write exclusively as a formal, authoritative academic supervisor report. DO NOT include any AI meta-commentary, internal system data tracking notes, parenthetical disclaimers (e.g., "derived — not in KNUST HDR Guide", "TBD", or "unconfirmed"), or self-referential statements about your confidence or rubric origins. Write purely substantive academic critique that reads as if authored directly by the supervisor.
+    Stage 5: Narrative Synthesis Agent.
+    Uses AgentRouter (Claude 3.5 Sonnet) or GROQ_SYNTHESIS_MODEL with strict evidence grounding.
+    """
+    if not evidence and not scores.get("sub_criteria_scores"):
+        return "# Narrative Report Generation Skipped\n\nNo valid evaluation evidence was recorded for this submission."
 
+    formatted_evidence = "\n".join([
+        f"- [{item.get('chapter', 'general').upper()}] ({item.get('sub_criterion_id', 'general')}): "
+        f"Quote: \"{item.get('quote', '')}\" | Assessment: {item.get('assessment', '')}"
+        for item in evidence[:40]
+    ])
 
-REPORT STRUCTURE (You MUST generate all 8 numbered sections):
+    mark_summary = f"{scores.get('total_marks', 0)} / {scores.get('max_possible', 100)} ({scores.get('percentage', 0):.1f}%)"
+    rubric_source = scores.get("rubric_name", f"KNUST {degree_level} Rubric")
+    degree_label = "Doctor of Philosophy (PhD)" if degree_level.lower() == "phd" else f"{degree_level} Thesis"
+
+    prompt = f"""You are a senior academic reviewer synthesizing a formal KNUST Postgraduate Thesis Assessment Report.
+
+EVALUATION CONTEXT:
+Degree Program: {degree_label}
+Rubric Source: {rubric_source}
+Total Computed Score: {mark_summary}
+
+GATHERED CHAPTER EVIDENCE (VERIFIED EXCERPTS):
+{formatted_evidence}
+
+CRITICAL RULES:
+1. Every claim must cite verbatim evidence quotes from the gathered list above.
+2. Never invent text, citations, or data not in the evidence.
+3. Banned phrases: "demonstrates a good grasp of", "lacks a nuanced analysis", "it is recommended that".
+4. Write in authoritative, formal academic prose suitable for a university thesis committee.
+
+STRUCTURE YOUR REPORT INTO THESE EXACT 8 SECTIONS (Use ## headings):
+
 # Comprehensive Thesis Evaluation Report
 
 ## 1. Executive Summary & Verdict
@@ -685,8 +790,6 @@ Provide specific critiques for Chapter 1 (Introduction), Chapter 2 (Literature R
 ## 5. Methodological & Analytical Rigour Assessment
 Detailed review of research design, data collection, analytical tools, and statistical/experimental validity based strictly on gathered evidence.
 
-strictly on gathered evidence.
-
 ## 6. Presentation & Formatting Audit
 Report only verified mechanical facts (word count: {doc_structure.get('metadata', {}).get('word_count_total', 0):,}, TOC duplicates, bibliography citations).
 
@@ -697,14 +800,7 @@ Numbered list of specific, actionable steps for the candidate before resubmissio
 State that evaluation was performed under the {degree_label} rubric ({rubric_source}) with evidence-grounded scoring.
 """
     try:
-        report = await call_llm_async(
-            prompt,
-            json_mode=False,
-            model=settings.GROQ_SYNTHESIS_MODEL,
-            temperature=0.5,
-            max_tokens=4000
-        )
-        return report
+        return await call_synthesis_llm_async(prompt, max_tokens=4000)
     except Exception as err:
         logger.error("Narrative synthesis agent failed: %s", err)
         return f"# Evaluation Report Generation Failed\n\nError: {err}"

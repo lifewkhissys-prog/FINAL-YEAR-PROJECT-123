@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     GROQ_FAST_MODEL: str = Field(default="openai/gpt-oss-20b")
     GROQ_VISION_MODEL: str = Field(default="openai/gpt-oss-120b")
 
+    # AgentRouter / Claude API configuration
+    AGENTROUTER_API_KEY: str = Field(default="")
+    AGENTROUTER_BASE_URL: str = Field(default="https://agentrouter.org")
+    AGENTROUTER_MODEL: str = Field(default="claude-opus-4-6")
+
 
     CLOUDINARY_URL: str = Field(default="")
     THESIS_UPLOAD_MAX_MB: int = Field(default=20)
