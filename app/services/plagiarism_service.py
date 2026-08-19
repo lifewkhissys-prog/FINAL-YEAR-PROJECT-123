@@ -59,7 +59,7 @@ async def fetch_openalex_matches(text: str) -> List[Dict[str, Any]]:
     query = " ".join(words)
     out = []
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=1.5) as client:
             res = await client.get("https://api.openalex.org/works", params={"search": query, "per_page": 2})
             if res.status_code == 200:
                 data = res.json()

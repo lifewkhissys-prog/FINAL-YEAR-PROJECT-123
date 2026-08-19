@@ -423,6 +423,26 @@ async def trigger_assessment(
     return {"message": "Assessment pipeline triggered successfully", "submission_id": id}
 
 
+@router.post("/submissions/{id}/reset")
+async def reset_submission_pipeline(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Cancel/Reset stuck evaluation pipeline back to ready state."""
+    stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
+    sub = (await db.execute(stmt)).scalars().first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
+
+    sub.status = "failed"
+    sub.pipeline_step = "failed"
+    sub.error_detail = "Evaluation pipeline terminated by user."
+    await db.commit()
+    return {"message": "Pipeline terminated and reset successfully", "submission_id": id}
+
+
 @router.get("/submissions/{id}/preliminary-check")
 async def get_preliminary_check(
     id: int,

@@ -175,9 +175,24 @@ export default function StructureMappingPage() {
               </button>
             </div>
             {isAssessing && (
-              <span className="text-[11px] text-on-surface-variant italic mt-1">
-                Unlocks automatically when evaluation completes
-              </span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[11px] text-on-surface-variant italic">
+                  Unlocks automatically when evaluation completes
+                </span>
+                <button
+                  onClick={async () => {
+                    try {
+                      await authFetch(`/api/submissions/${id}/reset`, { method: 'POST' });
+                      window.location.reload();
+                    } catch (e) {
+                      console.error("Reset error:", e);
+                    }
+                  }}
+                  className="px-2.5 py-0.5 bg-red-100 text-red-700 hover:bg-red-200 border border-red-300 text-[11px] font-semibold rounded transition-colors shadow-sm"
+                >
+                  Cancel & Reset
+                </button>
+              </div>
             )}
             {isFailed && (
               <div className="flex items-center gap-2 mt-1">
