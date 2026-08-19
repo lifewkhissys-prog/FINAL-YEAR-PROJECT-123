@@ -685,14 +685,9 @@ async def serve_submission_document(
         raise HTTPException(status_code=404, detail="Submission not found")
     check_submission_access(sub, current_user)
 
-    # 1. Cloudinary / Remote CDN storage: redirect directly to CDN edge URL for maximum speed & zero server load
-    target_cloudinary_url = sub.cloudinary_url or (sub.file_path if sub.file_path and sub.file_path.startswith("http") else None)
-    if target_cloudinary_url:
-        return RedirectResponse(url=target_cloudinary_url)
-
-    # 2. Local server disk file: use OS-level optimized FileResponse
+    # 1. Local server disk file: use OS-level optimized FileResponse first
     target_path = None
-    if sub.file_path:
+    if sub.file_path and not sub.file_path.startswith("http"):
         possible_paths = [
             sub.file_path,
             os.path.join(os.getcwd(), sub.file_path),
@@ -714,6 +709,43 @@ async def serve_submission_document(
             filename=filename,
             content_disposition_type="inline"
         )
+
+    # 2. Cloudinary / Signed / Remote CDN storage: proxy stream bytes directly to frontend
+    # Solves CORS (HTTP 0), 401 unauthorized headers leak, and signed Cloudinary private uploads
+    target_cloudinary_url = sub.cloudinary_url or (sub.file_path if sub.file_path and sub.file_path.startswith("http") else None)
+    if target_cloudinary_url:
+        try:
+            import httpx
+            client = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
+            req = client.build_request("GET", target_cloudinary_url)
+            r = await client.send(req, stream=True)
+            if r.status_code == 200:
+                raw_ct = (r.headers.get("content-type") or "").lower()
+                ext = ".pdf" if "pdf" in raw_ct or target_cloudinary_url.lower().endswith(".pdf") else ".docx"
+                media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                filename = f"{sub.student_name or 'student'}_{sub.title[:30] if sub.title else 'thesis'}{ext}".replace(" ", "_")
+
+                async def stream_bytes():
+                    try:
+                        async for chunk in r.aiter_bytes(chunk_size=65536):
+                            yield chunk
+                    finally:
+                        await r.aclose()
+                        await client.aclose()
+
+                resp_headers = {"Content-Disposition": f'inline; filename="{filename}"'}
+                if r.headers.get("content-length"):
+                    resp_headers["Content-Length"] = r.headers.get("content-length")
+
+                return StreamingResponse(
+                    stream_bytes(),
+                    media_type=media_type,
+                    headers=resp_headers
+                )
+            await r.aclose()
+            await client.aclose()
+        except Exception as err:
+            logger.warning("Cloudinary document streaming proxy error: %s", err)
 
     raise HTTPException(status_code=404, detail=f"Manuscript document for submission '{sub.title}' not found on server or storage.")
 

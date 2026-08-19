@@ -109,30 +109,15 @@ export default function DocumentViewer({
       setError(null);
 
       try {
-        let res;
-        const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
-        const docUrl = `${baseURL}/api/submissions/${submissionId}/document${tokenParam}`;
-
-        try {
-          // Fetch backend document endpoint using query token authentication without Bearer header.
-          // This prevents browser fetch from attaching an Authorization header that breaks 307 Cloudinary redirects.
-          res = await fetch(docUrl);
-        } catch (fetchErr) {
-          console.warn("Direct token fetch failed, trying authFetch fallback:", fetchErr);
+        let res = await authFetch(`/api/submissions/${submissionId}/document`);
+        if (!res.ok) {
+          const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+          const fallbackRes = await fetch(`${baseURL}/api/submissions/${submissionId}/document${tokenParam}`);
+          if (fallbackRes.ok) res = fallbackRes;
         }
 
-        if (!res || !res.ok) {
-          res = await authFetch(`/api/submissions/${submissionId}/document`, { redirect: 'manual' });
-          if (res.status === 307 || res.status === 302 || res.type === 'opaqueredirect') {
-            const redirectUrl = res.headers.get('location');
-            if (redirectUrl) {
-              res = await fetch(redirectUrl);
-            }
-          }
-        }
-
-        if (!res || !res.ok) {
-          let msg = `Server returned HTTP ${res ? res.status : 401}`;
+        if (!res.ok) {
+          let msg = `Server returned HTTP ${res.status}`;
           try {
             const errData = await res.json();
             if (errData?.detail) msg = errData.detail;
