@@ -238,6 +238,41 @@ async def list_submissions(
     return out
 
 
+@router.get("/submissions/{id}")
+@router.get("/thesis-submissions/{id}")
+async def get_submission(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Fetch details for a single thesis submission."""
+    res = await db.execute(select(ThesisSubmission).where(ThesisSubmission.id == id))
+    sub = res.scalar_one_or_none()
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Thesis submission with ID {id} not found."
+        )
+    check_submission_access(sub, current_user)
+    return {
+        "id": sub.id,
+        "student_name": sub.student_name,
+        "index_number": sub.index_number,
+        "title": sub.title,
+        "programme": sub.programme,
+        "institution": sub.institution,
+        "degree_level": sub.degree_level,
+        "status": sub.status,
+        "submitted_at": sub.submitted_at,
+        "preliminary_check_passed": sub.preliminary_check_passed,
+        "plagiarism_score": sub.plagiarism_score,
+        "error_detail": sub.error_detail,
+        "pipeline_step": sub.pipeline_step,
+        "pipeline_progress": sub.pipeline_progress,
+        "supervisor_recommendation": sub.supervisor_recommendation
+    }
+
+
 @router.delete("/submissions/{id}", status_code=status.HTTP_204_NO_CONTENT)
 @router.delete("/thesis-submissions/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_submission(
@@ -830,7 +865,16 @@ async def get_narrative_report(
     return {
         "status": sub.status,
         "narrative_report": report_text,
-        "supervisor_recommendation": rec
+        "supervisor_recommendation": rec,
+        "submission": {
+            "id": sub.id,
+            "student_name": sub.student_name,
+            "index_number": sub.index_number,
+            "title": sub.title,
+            "programme": sub.programme,
+            "institution": sub.institution,
+            "degree_level": sub.degree_level
+        }
     }
 
 

@@ -7,6 +7,7 @@ export default function FinalNarrativeReportPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const [submission, setSubmission] = useState(null);
   const [reportText, setReportText] = useState('');
   const [recommendation, setRecommendation] = useState('');
   const [loading, setLoading] = useState(true);
@@ -18,14 +19,28 @@ export default function FinalNarrativeReportPage() {
   useEffect(() => {
     async function loadReport() {
       try {
-        const res = await authFetch(`/api/submissions/${id}/report`);
-        if (res.ok) {
-          const data = await safeJson(res);
+        const [reportRes, subRes] = await Promise.all([
+          authFetch(`/api/submissions/${id}/report`),
+          authFetch(`/api/submissions/${id}`)
+        ]);
+
+        if (reportRes.ok) {
+          const data = await safeJson(reportRes);
           if (data) {
             setReportText(data.narrative_report_edited || data.narrative_report || '');
             if (data.supervisor_recommendation) {
               setRecommendation(data.supervisor_recommendation);
             }
+            if (data.submission) {
+              setSubmission(data.submission);
+            }
+          }
+        }
+
+        if (subRes.ok) {
+          const subData = await safeJson(subRes);
+          if (subData) {
+            setSubmission(subData);
           }
         }
       } catch (err) {

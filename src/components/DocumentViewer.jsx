@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { renderAsync } from 'docx-preview';
 import { authFetch } from '../api/axiosInstance';
 
@@ -10,8 +10,8 @@ function findMatchingDomElement(container, quote) {
   const normQuote = norm(quote);
   if (!normQuote || normQuote.length < 4) return null;
 
-  // Gather structural paragraph block containers & figures inside rendered docx
-  const blocks = Array.from(container.querySelectorAll('p, td, li, figure, section.docx > div'));
+  // Gather structural paragraph block containers & figures inside rendered docx and pdf
+  const blocks = Array.from(container.querySelectorAll('p, td, li, figure, section.docx > div, .pdf-text-block, .pdf-text-line'));
   if (blocks.length === 0) return null;
 
   // Tier 1: Full text substring match
@@ -57,20 +57,20 @@ function findMatchingDomElement(container, quote) {
 function findAssociatedImageElement(block) {
   if (!block) return null;
   // 1. Direct child img
-  const directImg = block.querySelector('img');
+  const directImg = block.querySelector('img, canvas');
   if (directImg) return directImg;
 
   // 2. Parent container img
   if (block.parentElement) {
-    const parentImg = block.parentElement.querySelector('img');
+    const parentImg = block.parentElement.querySelector('img, canvas');
     if (parentImg) return parentImg;
   }
 
   // 3. Next or previous sibling img
-  const nextImg = block.nextElementSibling?.querySelector('img') || (block.nextElementSibling?.tagName === 'IMG' ? block.nextElementSibling : null);
+  const nextImg = block.nextElementSibling?.querySelector('img, canvas') || (['IMG', 'CANVAS'].includes(block.nextElementSibling?.tagName) ? block.nextElementSibling : null);
   if (nextImg) return nextImg;
 
-  const prevImg = block.previousElementSibling?.querySelector('img') || (block.previousElementSibling?.tagName === 'IMG' ? block.previousElementSibling : null);
+  const prevImg = block.previousElementSibling?.querySelector('img, canvas') || (['IMG', 'CANVAS'].includes(block.previousElementSibling?.tagName) ? block.previousElementSibling : null);
   if (prevImg) return prevImg;
 
   return null;
@@ -88,25 +88,15 @@ export default function DocumentViewer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [docType, setDocType] = useState('unknown'); // 'pdf' | 'docx'
-  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
   const [hoveredResult, setHoveredResult] = useState(null);
-  const docxContainerRef = useRef(null);
+  const documentContainerRef = useRef(null);
 
   const baseURL = import.meta.env.VITE_API_BASE_URL || '';
   const token = localStorage.getItem('devlab_token') || localStorage.getItem('token') || sessionStorage.getItem('token') || '';
   const directDownloadUrl = `${baseURL}/api/submissions/${submissionId}/document?token=${encodeURIComponent(token)}`;
 
-  // PDF URL with search fragment if highlight is active
-  const pdfUrlWithHighlight = useMemo(() => {
-    if (!pdfBlobUrl) return null;
-    if (!activeQuoteHighlight) return pdfBlobUrl;
-    const searchPhrase = encodeURIComponent(activeQuoteHighlight.slice(0, 40).replace(/["']/g, ''));
-    return `${pdfBlobUrl}#search=${searchPhrase}`;
-  }, [pdfBlobUrl, activeQuoteHighlight]);
-
   useEffect(() => {
     let active = true;
-    let createdUrl = null;
 
     async function loadDocument() {
       setLoading(true);
@@ -127,23 +117,90 @@ export default function DocumentViewer({
         const isPdf = contentType.includes('pdf') || contentDisposition.includes('.pdf');
         const isDocx = contentType.includes('word') || contentType.includes('officedocument') || contentDisposition.includes('.docx');
 
+        const arrayBuffer = await blob.arrayBuffer();
+        if (!active) return;
+
         if (isPdf) {
           setDocType('pdf');
-          createdUrl = URL.createObjectURL(blob);
-          setPdfBlobUrl(createdUrl);
           setLoading(false);
+
+          setTimeout(async () => {
+            if (!documentContainerRef.current || !active) return;
+            documentContainerRef.current.innerHTML = '';
+
+            try {
+              const pdfjsLib = await import('pdfjs-dist');
+              if (pdfjsLib.GlobalWorkerOptions) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
+              }
+
+              const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+              const pdf = await loadingTask.promise;
+
+              for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'pdf-page-wrapper relative bg-white text-zinc-900 shadow-xl mb-6 mx-auto rounded p-6 border border-slate-200';
+                pageDiv.style.width = '100%';
+                pageDiv.style.maxWidth = '900px';
+                pageDiv.setAttribute('data-page-number', pageNum);
+
+                const canvas = document.createElement('canvas');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                canvas.className = 'w-full h-auto block rounded shadow-inner mb-4';
+                const canvasContext = canvas.getContext('2d');
+                await page.render({ canvasContext, viewport }).promise;
+                pageDiv.appendChild(canvas);
+
+                const textContent = await page.getTextContent();
+                const textLayerDiv = document.createElement('div');
+                textLayerDiv.className = 'pdf-text-layer mt-4 space-y-2 pt-3 border-t border-slate-200';
+
+                let currentLine = [];
+                const lines = [];
+
+                for (const item of textContent.items) {
+                  const str = (item.str || '').trim();
+                  if (!str) continue;
+                  currentLine.push(str);
+
+                  if (/[.!?]$/.test(str) || currentLine.join(' ').length > 200) {
+                    lines.push(currentLine.join(' '));
+                    currentLine = [];
+                  }
+                }
+                if (currentLine.length > 0) {
+                  lines.push(currentLine.join(' '));
+                }
+
+                lines.forEach(lineText => {
+                  const p = document.createElement('p');
+                  p.className = 'pdf-text-block text-xs font-serif leading-relaxed text-slate-800 p-2 rounded transition-all';
+                  p.textContent = lineText;
+                  textLayerDiv.appendChild(p);
+                });
+
+                pageDiv.appendChild(textLayerDiv);
+                documentContainerRef.current.appendChild(pageDiv);
+              }
+            } catch (pdfErr) {
+              console.error("PDF render error:", pdfErr);
+              if (active) setError("Could not parse PDF text structure. You can download the file directly using the button above.");
+            }
+          }, 50);
+
         } else if (isDocx || blob.type.includes('word') || blob.type.includes('officedocument')) {
           setDocType('docx');
-          const arrayBuffer = await blob.arrayBuffer();
-          if (!active) return;
-
           setLoading(false);
-          // Render docx after DOM updates
+
           setTimeout(async () => {
-            if (docxContainerRef.current) {
-              docxContainerRef.current.innerHTML = '';
+            if (documentContainerRef.current && active) {
+              documentContainerRef.current.innerHTML = '';
               try {
-                await renderAsync(arrayBuffer, docxContainerRef.current, null, {
+                await renderAsync(arrayBuffer, documentContainerRef.current, null, {
                   className: 'docx-preview-root',
                   inWrapper: true,
                   ignoreWidth: false,
@@ -157,11 +214,9 @@ export default function DocumentViewer({
               }
             }
           }, 50);
+
         } else {
-          // Fallback: try as PDF
           setDocType('pdf');
-          createdUrl = URL.createObjectURL(blob);
-          setPdfBlobUrl(createdUrl);
           setLoading(false);
         }
       } catch (err) {
@@ -179,20 +234,17 @@ export default function DocumentViewer({
 
     return () => {
       active = false;
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
-      }
     };
   }, [submissionId]);
 
-  // Effect: Highlight single active quote & associated figure images inside rendered Word document (.docx)
+  // Effect: Highlight single active quote & associated figure images inside rendered document (.pdf / .docx)
   useEffect(() => {
-    if (docType !== 'docx' || !docxContainerRef.current || loading) return;
+    if (!documentContainerRef.current || loading) return;
 
     // Reset existing active highlights & image outlines
-    const prevHighlights = docxContainerRef.current.querySelectorAll('.docx-active-highlight');
+    const prevHighlights = documentContainerRef.current.querySelectorAll('.docx-active-highlight, .pdf-active-highlight');
     prevHighlights.forEach(el => {
-      el.classList.remove('docx-active-highlight');
+      el.classList.remove('docx-active-highlight', 'pdf-active-highlight');
       el.style.backgroundColor = '';
       el.style.borderLeft = '';
       el.style.padding = '';
@@ -201,9 +253,9 @@ export default function DocumentViewer({
       el.style.outline = '';
     });
 
-    const prevImgOutlines = docxContainerRef.current.querySelectorAll('img.docx-img-highlight');
+    const prevImgOutlines = documentContainerRef.current.querySelectorAll('img.docx-img-highlight, canvas.pdf-img-highlight');
     prevImgOutlines.forEach(img => {
-      img.classList.remove('docx-img-highlight');
+      img.classList.remove('docx-img-highlight', 'pdf-img-highlight');
       img.style.outline = '';
       img.style.boxShadow = '';
       img.style.borderRadius = '';
@@ -211,21 +263,21 @@ export default function DocumentViewer({
 
     if (!activeQuoteHighlight) return;
 
-    const matchedEl = findMatchingDomElement(docxContainerRef.current, activeQuoteHighlight);
+    const matchedEl = findMatchingDomElement(documentContainerRef.current, activeQuoteHighlight);
 
     if (matchedEl) {
-      matchedEl.classList.add('docx-active-highlight');
-      matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.25)';
+      matchedEl.classList.add('docx-active-highlight', 'pdf-active-highlight');
+      matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.3)';
       matchedEl.style.borderLeft = '4px solid #f59e0b';
       matchedEl.style.padding = '8px 12px';
       matchedEl.style.borderRadius = '6px';
-      matchedEl.style.boxShadow = '0 0 0 1px rgba(245, 158, 11, 0.3)';
+      matchedEl.style.boxShadow = '0 0 16px rgba(245, 158, 11, 0.4)';
       matchedEl.style.transition = 'all 0.3s ease';
 
-      // Highlight associated figure image if present
+      // Highlight associated figure image/canvas if present
       const associatedImg = findAssociatedImageElement(matchedEl);
       if (associatedImg) {
-        associatedImg.classList.add('docx-img-highlight');
+        associatedImg.classList.add('docx-img-highlight', 'pdf-img-highlight');
         associatedImg.style.outline = '4px solid #f59e0b';
         associatedImg.style.borderRadius = '8px';
         associatedImg.style.boxShadow = '0 0 25px rgba(245, 158, 11, 0.5)';
@@ -240,12 +292,12 @@ export default function DocumentViewer({
 
   // Effect: Highlight ALL cited quotes & figures in Full Manuscript mode + Attach Hover Tooltip & Click Listeners
   useEffect(() => {
-    if (docType !== 'docx' || !docxContainerRef.current || loading || !allHighlights || allHighlights.length === 0) return;
+    if (!documentContainerRef.current || loading || !allHighlights || allHighlights.length === 0) return;
 
     // Reset previous all-quote highlights & image highlights
-    const prevAll = docxContainerRef.current.querySelectorAll('.docx-all-quote-highlight');
+    const prevAll = documentContainerRef.current.querySelectorAll('.docx-all-quote-highlight, .pdf-all-quote-highlight');
     prevAll.forEach(el => {
-      el.classList.remove('docx-all-quote-highlight');
+      el.classList.remove('docx-all-quote-highlight', 'pdf-all-quote-highlight');
       el.style.backgroundColor = '';
       el.style.borderBottom = '';
       el.style.cursor = '';
@@ -254,9 +306,9 @@ export default function DocumentViewer({
       el.onclick = null;
     });
 
-    const prevImgs = docxContainerRef.current.querySelectorAll('img.docx-all-img-highlight');
+    const prevImgs = documentContainerRef.current.querySelectorAll('img.docx-all-img-highlight, canvas.pdf-all-img-highlight');
     prevImgs.forEach(img => {
-      img.classList.remove('docx-all-img-highlight');
+      img.classList.remove('docx-all-img-highlight', 'pdf-all-img-highlight');
       img.style.outline = '';
       img.style.boxShadow = '';
       img.style.cursor = '';
@@ -269,10 +321,10 @@ export default function DocumentViewer({
       const quote = item.cited_text || item.evidence_quote;
       if (!quote) return;
 
-      const matchedEl = findMatchingDomElement(docxContainerRef.current, quote);
+      const matchedEl = findMatchingDomElement(documentContainerRef.current, quote);
       if (matchedEl) {
-        matchedEl.classList.add('docx-all-quote-highlight');
-        matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.18)';
+        matchedEl.classList.add('docx-all-quote-highlight', 'pdf-all-quote-highlight');
+        matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.2)';
         matchedEl.style.borderBottom = '2px dashed #f59e0b';
         matchedEl.style.cursor = 'pointer';
 
@@ -301,7 +353,7 @@ export default function DocumentViewer({
         // Also highlight associated figure diagram image if available
         const associatedImg = findAssociatedImageElement(matchedEl);
         if (associatedImg) {
-          associatedImg.classList.add('docx-all-img-highlight');
+          associatedImg.classList.add('docx-all-img-highlight', 'pdf-all-img-highlight');
           associatedImg.style.outline = '3px dashed #f59e0b';
           associatedImg.style.borderRadius = '6px';
           associatedImg.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.3)';
@@ -386,21 +438,7 @@ export default function DocumentViewer({
           </div>
         )}
 
-        {!loading && !error && docType === 'pdf' && pdfUrlWithHighlight && (
-          <object
-            data={pdfUrlWithHighlight}
-            type="application/pdf"
-            className="w-full h-full min-h-[600px] border-0"
-          >
-            <iframe
-              src={pdfUrlWithHighlight}
-              title="Thesis Document PDF"
-              className="w-full h-full min-h-[600px] border-0"
-            />
-          </object>
-        )}
-
-        {!loading && !error && docType === 'docx' && (
+        {!loading && !error && (
           <div className="p-4 md:p-8 flex justify-center min-h-full">
             <style>{`
               .docx-wrapper {
@@ -416,7 +454,7 @@ export default function DocumentViewer({
                 padding: 3rem !important;
               }
             `}</style>
-            <div ref={docxContainerRef} className="w-full max-w-4xl" />
+            <div ref={documentContainerRef} className="w-full max-w-4xl" />
           </div>
         )}
 
