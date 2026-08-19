@@ -696,6 +696,7 @@ Title: {submission.title or 'Untitled Thesis'}
 Degree Level: {degree_label}
 Structure Option: {doc_structure.get('metadata', {}).get('structure_option', 'monograph')}
 Computed Score: {mark_summary}
+Rubric Source: {rubric_source}
 
 GATHERED EVIDENCE FROM CHAPTERS:
 {evidence_text}
@@ -724,37 +725,6 @@ STRICT CONSTRAINTS (CRITICAL):
    - "Evaluated based on chapter evidence"
    - "needs further refinement"
    - "lacks empirical backing"
-    Stage 5: Narrative Synthesis Agent.
-    Uses AgentRouter (Claude 3.5 Sonnet) or GROQ_SYNTHESIS_MODEL with strict evidence grounding.
-    """
-    if not evidence and not scores.get("sub_criteria_scores"):
-        return "# Narrative Report Generation Skipped\n\nNo valid evaluation evidence was recorded for this submission."
-
-    formatted_evidence = "\n".join([
-        f"- [{item.get('chapter', 'general').upper()}] ({item.get('sub_criterion_id', 'general')}): "
-        f"Quote: \"{item.get('quote', '')}\" | Assessment: {item.get('assessment', '')}"
-        for item in evidence[:40]
-    ])
-
-    mark_summary = f"{scores.get('total_marks', 0)} / {scores.get('max_possible', 100)} ({scores.get('percentage', 0):.1f}%)"
-    rubric_source = scores.get("rubric_name", f"KNUST {degree_level} Rubric")
-    degree_label = "Doctor of Philosophy (PhD)" if degree_level.lower() == "phd" else f"{degree_level} Thesis"
-
-    prompt = f"""You are a senior academic reviewer synthesizing a formal KNUST Postgraduate Thesis Assessment Report.
-
-EVALUATION CONTEXT:
-Degree Program: {degree_label}
-Rubric Source: {rubric_source}
-Total Computed Score: {mark_summary}
-
-GATHERED CHAPTER EVIDENCE (VERIFIED EXCERPTS):
-{formatted_evidence}
-
-CRITICAL RULES:
-1. Every claim must cite verbatim evidence quotes from the gathered list above.
-2. Never invent text, citations, or data not in the evidence.
-3. Banned phrases: "demonstrates a good grasp of", "lacks a nuanced analysis", "it is recommended that".
-4. Write in authoritative, formal academic prose suitable for a university thesis committee.
 
 STRUCTURE YOUR REPORT INTO THESE EXACT 8 SECTIONS (Use ## headings):
 
