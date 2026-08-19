@@ -106,7 +106,7 @@ async def call_llm_async(
         raise ValueError("GROQ_API_KEY is not configured in settings or .env file.")
 
     candidate_models = [primary_model]
-    for fallback in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b", "meta-llama/llama-4-scout-17b-16e-instruct"]:
+    for fallback in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"]:
         if fallback not in candidate_models:
             candidate_models.append(fallback)
 
@@ -128,6 +128,9 @@ async def call_llm_async(
                 }
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}
+                    has_json_mention = any("json" in m["content"].lower() for m in messages)
+                    if not has_json_mention:
+                        messages.insert(0, {"role": "system", "content": "You are a helpful assistant. You must respond with valid JSON output."})
 
                 try:
                     res = await groq_client.chat.completions.create(**kwargs)

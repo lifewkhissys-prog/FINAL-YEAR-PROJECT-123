@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     GROQ_VERIFIER_MODEL: str = Field(default="openai/gpt-oss-20b")
     GROQ_SYNTHESIS_MODEL: str = Field(default="openai/gpt-oss-120b")
     GROQ_FAST_MODEL: str = Field(default="openai/gpt-oss-20b")
-    GROQ_VISION_MODEL: str = Field(default="meta-llama/llama-4-scout-17b-16e-instruct")
+    GROQ_VISION_MODEL: str = Field(default="openai/gpt-oss-120b")
 
 
     CLOUDINARY_URL: str = Field(default="")
