@@ -688,11 +688,11 @@ async def run_narrative_synthesis(
 
     flow_summary = (flow_table or "Flow matrix not generated.")[:1500]
 
-    prompt = f"""You are an authoritative academic examiner writing a Comprehensive Thesis Evaluation Report for a supervisor.
+    prompt = f"""You are a senior academic supervisor writing a formal, critical Thesis Assessment Report directly to your student ({student_name}).
 
 MANUSCRIPT DETAILS:
-Candidate: {student_name}
-Title: {submission.title or 'Untitled Thesis'}
+Candidate Name: {student_name}
+Thesis Title: {submission.title or 'Untitled Thesis'}
 Degree Level: {degree_label}
 Structure Option: {doc_structure.get('metadata', {}).get('structure_option', 'monograph')}
 Computed Score: {mark_summary}
@@ -710,50 +710,55 @@ MECHANICAL FINDINGS:
 FLOW MATRIX:
 {flow_summary}
 
-STRICT CONSTRAINTS (CRITICAL):
-1. You may NOT state a weakness or defect unless it explicitly appears as a gap_description in the evidence or findings above.
-2. You may NOT state a strength unless it is backed by an actual verbatim quote from the evidence above.
-3. Every single bullet point must be traceable to a specific chapter evidence item.
-4. DO NOT mention font family (e.g. Times New Roman) or line spacing (e.g. 1.5 spacing) compliance, as styling metadata is unverified.
-5. BANNED GENERIC FILLER PHRASES — YOU ARE STRICTLY FORBIDDEN FROM USING ANY OF THE FOLLOWING:
-   - "Lack of test cases or evaluation evidence"
-   - "Lack of clear and consistent referencing style"
-   - "lacks a nuanced analysis"
-   - "fails to provide a clear explanation"
-   - "lacks a clear discussion of future directions"
-   - "demonstrates a good grasp of"
-   - "Evaluated based on chapter evidence"
-   - "needs further refinement"
-   - "lacks empirical backing"
+STRICT PERSONA & VOICE CONSTRAINTS:
+1. DIRECT SECOND-PERSON ADDRESS: Address the student directly by first name ("Dear {student_name}, ...") throughout Section 1 ("Overall Supervisor's Assessment") and Section 8 ("Final Recommendation"). Use warm but firm second-person supervisor voice ("your thesis", "you demonstrate", "you must clarify") rather than third-person clinical language ("the candidate", "Mahfuz submitted").
+2. JUDGMENT-FIRST STRENGTHS: In Section 2 ("Overall Strengths"), state what the strength IS as a supervisor judgment in the first sentence, then support it with brief evidence. DO NOT just quote text and describe what it says.
+3. DETAILED CORRECTIONS TABLE: In Section 3 ("Major Corrections Required"), write a table with exact columns: | No. | Issue Identified | Why It Matters | Required Correction |. Ground every issue in evidence.
+4. NO GENERIC FILLER OR UNVERIFIED FONTS: Never invent defects not grounded in evidence. Never mention font family or line spacing unless present in MECHANICAL FINDINGS.
+5. BANNED GENERIC PHRASES: "Lack of test cases or evaluation evidence", "lacks a nuanced analysis", "fails to provide a clear explanation", "demonstrates a good grasp of", "needs further refinement".
+6. DO NOT include system/internal metadata self-descriptions like "(authoritative)" in the report text.
 
 STRUCTURE YOUR REPORT INTO THESE EXACT 8 SECTIONS (Use ## headings):
 
-# Comprehensive Thesis Evaluation Report
+# Critical Thesis Assessment Report
 
-## 1. Executive Summary & Verdict
-State the candidate's name, degree level ({degree_label}), final computed score ({mark_summary}), grade band, and clear verdict. State the rubric provenance ({rubric_source}).
+## 1. Overall Supervisor's Assessment
+Dear {student_name}, I have reviewed your thesis titled "{submission.title or 'Untitled Thesis'}" critically... [1-2 paragraphs in direct supervisor voice addressed to {student_name}, summarizing the research topic, its relevance, key findings, and overall judgment].
+
+**Supervisor's overall judgement:** [1-2 sentences stating whether the thesis is acceptable, conditionally acceptable, or requires major revision, and why].
 
 ## 2. Overall Strengths
-Bullet points of genuine scholarly or technical strengths, quoting verbatim evidence excerpts.
+Bullet points of genuine scholarly or technical strengths. State the supervisor judgment first in bold, followed by supporting evidence:
+- **[Short Label]:** [Judgment-first sentence about the thesis, followed by supporting evidence].
 
-## 3. Priority Corrections Table
+## 3. Major Corrections Required
 Markdown table:
-| Chapter / Section | Defect / Gap | Grounded Evidence | Required Action |
+| No. | Issue Identified | Why It Matters | Required Correction |
 
-## 4. Chapter-by-Chapter Critique
-Provide specific critiques for Chapter 1 (Introduction), Chapter 2 (Literature Review), Chapter 3 (Methodology), Chapter 4 (Results), Chapter 5 (Discussion), and Chapter 6 (Conclusions). If any chapter gap exists, explain it precisely without generic filler.
+## 4. Chapter-by-Chapter Critical Assessment
+Provide specific, grounded critiques for Chapter 1 (Introduction), Chapter 2 (Literature Review), Chapter 3 (Methodology), Chapter 4 (Results), Chapter 5 (Discussion), and Chapter 6 (Conclusions).
 
-## 5. Methodological & Analytical Rigour Assessment
-Detailed review of research design, data collection, analytical tools, and statistical/experimental validity based strictly on gathered evidence.
+## 5. Technical and Methodological Comments
+- **[Sub-topic, e.g. Dataset Suitability / Experimental Rigour]:** [Specific technical comment grounded in evidence].
 
-## 6. Presentation & Formatting Audit
-Report only verified mechanical facts (word count: {doc_structure.get('metadata', {}).get('word_count_total', 0):,}, TOC duplicates, bibliography citations).
+## 6. Formatting, Language, and Referencing Corrections
+- [Specific, concrete corrections regarding section numbering, bibliography citation consistency, spelling/capitalization, and verified mechanical facts].
 
-## 7. Priority Action Plan for Resubmission
-Numbered list of specific, actionable steps for the candidate before resubmission.
+## 7. Priority Action Plan for the Candidate
+**1.** First, [action].
+**2.** Second, [action].
+(Ordered by priority/dependency)
 
-## 8. Provenance & Evaluation Metadata
-State that evaluation was performed under the {degree_label} rubric ({rubric_source}) with evidence-grounded scoring.
+## 8. Final Recommendation
+[1 paragraph summarizing the overall verdict and required next steps.]
+
+**Decision:** [Short decision line, e.g. Conditionally Acceptable subject to priority corrections]
+
+**Supervisor's closing note to {student_name}:** [1 short paragraph, addressed to {student_name} by name in a supportive-but-direct supervisor tone.]
+
+**Prepared by:** Supervisor
+Signature: _____________________________________
+Date: __________________________________________
 """
     try:
         return await call_synthesis_llm_async(prompt, max_tokens=4000)

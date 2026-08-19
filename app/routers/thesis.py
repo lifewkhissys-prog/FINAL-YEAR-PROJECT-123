@@ -352,11 +352,11 @@ async def create_submission(
 
     auto_meta = extract_metadata_from_text(full_text)
 
-    final_student_name = student_name.strip() if student_name and student_name.strip() else (auto_meta.get("student_name") or "Anonymous Student")
-    final_index_number = index_number.strip() if index_number and index_number.strip() else (auto_meta.get("index_number") or None)
-    final_title = title.strip() if title and title.strip() else (auto_meta.get("title") or Path(file.filename).stem)
-    final_degree = degree_level if (degree_level and degree_level != "undergraduate") else (auto_meta.get("degree_level") or degree_level or "undergraduate")
-    final_programme = programme if (programme and programme != "Computer Science") else (auto_meta.get("programme") or programme or "Computer Science")
+    final_student_name = student_name.strip() if (student_name and student_name.strip()) else (auto_meta.get("student_name") or "Anonymous Student")
+    final_index_number = index_number.strip() if (index_number and index_number.strip()) else (auto_meta.get("index_number") or None)
+    final_title = title.strip() if (title and title.strip()) else (auto_meta.get("title") or Path(file.filename).stem)
+    final_degree = (degree_level.strip().lower() if (degree_level and degree_level.strip()) else (auto_meta.get("degree_level") or "undergraduate"))
+    final_programme = (programme.strip() if (programme and programme.strip()) else (auto_meta.get("programme") or "Computer Science"))
 
     sub = ThesisSubmission(
         lecturer_id=current_user.id,
