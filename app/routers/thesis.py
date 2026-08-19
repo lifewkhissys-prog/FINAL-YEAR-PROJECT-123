@@ -3,7 +3,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, status
-from fastapi.responses import StreamingResponse, Response, RedirectResponse
+from fastapi.responses import StreamingResponse, Response, RedirectResponse, FileResponse
 
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -685,43 +685,37 @@ async def serve_submission_document(
         raise HTTPException(status_code=404, detail="Submission not found")
     check_submission_access(sub, current_user)
 
-    if sub.file_path and os.path.exists(sub.file_path):
-        ext = Path(sub.file_path).suffix.lower()
-        media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        filename = f"{sub.student_name}_{sub.title[:30]}{ext}".replace(" ", "_")
-
-        def file_stream():
-            with open(sub.file_path, "rb") as f:
-                while chunk := f.read(64 * 1024):
-                    yield chunk
-
-        return StreamingResponse(
-            file_stream(),
-            media_type=media_type,
-            headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
-        )
-
-    # Cloudinary fallback: if local file is missing due to container restart, fetch stream from Cloudinary to bypass browser 401 restrictions
+    # 1. Cloudinary / Remote CDN storage: redirect directly to CDN edge URL for maximum speed & zero server load
     target_cloudinary_url = sub.cloudinary_url or (sub.file_path if sub.file_path and sub.file_path.startswith("http") else None)
     if target_cloudinary_url:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(target_cloudinary_url, follow_redirects=True)
-                if resp.status_code == 200:
-                    ext = ".pdf" if "pdf" in target_cloudinary_url.lower() else ".docx"
-                    media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    filename = f"{sub.student_name}_{sub.title[:30]}{ext}".replace(" ", "_")
-                    return Response(
-                        content=resp.content,
-                        media_type=media_type,
-                        headers={"Content-Disposition": f"inline; filename=\"{filename}\""}
-                    )
-        except Exception as e:
-            print(f"Cloudinary fetch warning: {e}")
         return RedirectResponse(url=target_cloudinary_url)
 
-    raise HTTPException(status_code=404, detail="Original document file not available on local server or Cloudinary storage.")
+    # 2. Local server disk file: use OS-level optimized FileResponse
+    target_path = None
+    if sub.file_path:
+        possible_paths = [
+            sub.file_path,
+            os.path.join(os.getcwd(), sub.file_path),
+            os.path.join("uploads", os.path.basename(sub.file_path)),
+            os.path.abspath(sub.file_path)
+        ]
+        for p in possible_paths:
+            if p and os.path.exists(p):
+                target_path = p
+                break
+
+    if target_path and os.path.exists(target_path):
+        ext = Path(target_path).suffix.lower()
+        media_type = "application/pdf" if ext == ".pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        filename = f"{sub.student_name or 'student'}_{sub.title[:30] if sub.title else 'thesis'}{ext}".replace(" ", "_")
+        return FileResponse(
+            path=target_path,
+            media_type=media_type,
+            filename=filename,
+            content_disposition_type="inline"
+        )
+
+    raise HTTPException(status_code=404, detail=f"Manuscript document for submission '{sub.title}' not found on server or storage.")
 
 
 

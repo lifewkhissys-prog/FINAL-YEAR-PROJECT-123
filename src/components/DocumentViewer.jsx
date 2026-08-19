@@ -1,6 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { renderAsync } from 'docx-preview';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { authFetch } from '../api/axiosInstance';
+
+if (pdfjsLib.GlobalWorkerOptions) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+}
 
 // 4-Tier Fuzzy DOM text & figure image block locator for evidence quotes
 function findMatchingDomElement(container, quote) {
@@ -105,7 +111,12 @@ export default function DocumentViewer({
       try {
         const res = await authFetch(`/api/submissions/${submissionId}/document`);
         if (!res.ok) {
-          throw new Error(`Server returned HTTP ${res.status}`);
+          let msg = `Server returned HTTP ${res.status}`;
+          try {
+            const errData = await res.json();
+            if (errData?.detail) msg = errData.detail;
+          } catch (e) {}
+          throw new Error(msg);
         }
 
         const contentType = (res.headers.get('content-type') || '').toLowerCase();
@@ -129,11 +140,6 @@ export default function DocumentViewer({
             documentContainerRef.current.innerHTML = '';
 
             try {
-              const pdfjsLib = await import('pdfjs-dist');
-              if (pdfjsLib.GlobalWorkerOptions) {
-                pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '4.10.38'}/pdf.worker.min.mjs`;
-              }
-
               const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
               const pdf = await loadingTask.promise;
 
@@ -222,7 +228,7 @@ export default function DocumentViewer({
       } catch (err) {
         console.error("Error loading document stream:", err);
         if (active) {
-          setError("Failed to fetch manuscript file from server.");
+          setError(err.message || "Failed to fetch manuscript file from server.");
           setLoading(false);
         }
       }
