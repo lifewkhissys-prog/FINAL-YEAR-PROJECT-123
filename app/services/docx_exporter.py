@@ -271,13 +271,14 @@ def generate_thesis_docx_report(submission, results, summary, narrative_text: st
     if in_table:
         flush_table()
 
-    # 4. Add Signature Block at end of document if not present
-    doc.add_paragraph()
-    p_sig = doc.add_paragraph()
-    r_sig = p_sig.add_run("Prepared by: Supervisor\nSignature: _____________________________________\nDate: __________________________________________")
-    r_sig.font.name = "Arial"
-    r_sig.font.size = Pt(9.5)
-    r_sig.font.color.rgb = RGBColor(60, 60, 60)
+    # 4. Add Signature Block at end of document if not already present in narrative_text
+    if narrative_text and not ("Prepared by:" in narrative_text or "Signature:" in narrative_text):
+        doc.add_paragraph()
+        p_sig = doc.add_paragraph()
+        r_sig = p_sig.add_run("Prepared by: Supervisor\nSignature: _____________________________________\nDate: __________________________________________")
+        r_sig.font.name = "Arial"
+        r_sig.font.size = Pt(9.5)
+        r_sig.font.color.rgb = RGBColor(60, 60, 60)
 
     # Save to BytesIO stream
     target_stream = io.BytesIO()

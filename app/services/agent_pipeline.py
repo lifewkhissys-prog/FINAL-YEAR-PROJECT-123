@@ -712,7 +712,7 @@ FLOW MATRIX:
 
 STRICT PERSONA & VOICE CONSTRAINTS:
 1. DIRECT SECOND-PERSON ADDRESS: Address the student directly by first name ("Dear {student_name}, ...") throughout Section 1 ("Overall Supervisor's Assessment") and Section 8 ("Final Recommendation"). Use warm but firm second-person supervisor voice ("your thesis", "you demonstrate", "you must clarify") rather than third-person clinical language ("the candidate", "Mahfuz submitted").
-2. JUDGMENT-FIRST STRENGTHS: In Section 2 ("Overall Strengths"), state what the strength IS as a supervisor judgment in the first sentence, then support it with brief evidence. DO NOT just quote text and describe what it says.
+2. SYNTHESIS-FIRST STRENGTHS: In Section 2 ("Major Strengths of the Thesis"), write each bullet as a self-contained supervisor judgment — NOT as a verbatim quote followed by an interpretive clause. The pattern is: (a) bold label, (b) one-sentence supervisor assessment of WHY this is a strength and what it means for the thesis quality, (c) optionally a brief parenthetical reference to the chapter or section that supports the claim. Do NOT paste verbatim quotes and then explain what they say — that is restating, not synthesising.
 3. DETAILED CORRECTIONS TABLE: In Section 3 ("Major Corrections Required"), write a table with exact columns: | No. | Issue Identified | Why It Matters | Required Correction |. Ground every issue in evidence.
 4. NO GENERIC FILLER OR UNVERIFIED FONTS: Never invent defects not grounded in evidence. Never mention font family or line spacing unless present in MECHANICAL FINDINGS.
 5. BANNED GENERIC PHRASES: "Lack of test cases or evaluation evidence", "lacks a nuanced analysis", "fails to provide a clear explanation", "demonstrates a good grasp of", "needs further refinement".
@@ -728,8 +728,13 @@ Dear {student_name}, I have reviewed your thesis titled "{submission.title or 'U
 **Supervisor's overall judgement:** [1-2 sentences stating whether the thesis is acceptable, conditionally acceptable, or requires major revision, and why].
 
 ## 2. Major Strengths of the Thesis
-Bullet points of genuine scholarly or technical strengths. State the supervisor judgment first in bold, followed by supporting evidence:
-- **[Short Label]:** [Judgment-first sentence about the thesis, followed by supporting evidence].
+Each bullet must be a self-contained supervisor synthesis — a judgment about thesis quality, not a quoted passage with a trailing interpretation.
+Format:
+- **[Short Label]:** [Full supervisor judgment sentence explaining WHY this is a strength and what it contributes to the thesis, referencing the relevant chapter parenthetically rather than quoting verbatim text].
+
+Example (tone model — do NOT copy content):
+- **Relevant research problem:** The work addresses a genuine gap in [domain] by proposing [approach], which is appropriate for a {degree_label}-level contribution (Chapter 1).
+- **Honest reporting of limitations:** The candidate openly acknowledges the constraints of the study, which strengthens rather than weakens the academic integrity of the work (Chapter 5).
 
 ## 3. Major Corrections Required
 Markdown table:
