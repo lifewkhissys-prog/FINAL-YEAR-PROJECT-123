@@ -40,19 +40,20 @@ def generate_thesis_docx_report(submission, results, summary, narrative_text: st
         section.right_margin = Inches(1.0)
 
     # 1. Document Header Banner
+    degree_text = (submission.degree_level or "msc").upper()
     header_p = doc.add_paragraph()
     header_p.paragraph_format.space_before = Pt(0)
-    header_p.paragraph_format.space_after = Pt(4)
-    r_h = header_p.add_run("KWAME NKRUMAH UNIVERSITY OF SCIENCE AND TECHNOLOGY")
+    header_p.paragraph_format.space_after = Pt(2)
+    r_h = header_p.add_run(f"CRITICAL ASSESSMENT REPORT ON {degree_text} THESIS")
     r_h.font.name = "Arial"
-    r_h.font.size = Pt(15)
+    r_h.font.size = Pt(14)
     r_h.font.bold = True
     r_h.font.color.rgb = RGBColor(15, 41, 66)
 
     header_sub = doc.add_paragraph()
     header_sub.paragraph_format.space_before = Pt(0)
-    header_sub.paragraph_format.space_after = Pt(18)
-    r_h_sub = header_sub.add_run("School of Graduate Studies — Critical Thesis Assessment Report")
+    header_sub.paragraph_format.space_after = Pt(16)
+    r_h_sub = header_sub.add_run("Supervisor’s Review and Corrective Guidance to the Supervisee")
     r_h_sub.font.name = "Arial"
     r_h_sub.font.size = Pt(11)
     r_h_sub.font.italic = True

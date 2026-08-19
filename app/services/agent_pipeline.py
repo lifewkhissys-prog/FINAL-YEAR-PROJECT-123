@@ -727,7 +727,7 @@ Dear {student_name}, I have reviewed your thesis titled "{submission.title or 'U
 
 **Supervisor's overall judgement:** [1-2 sentences stating whether the thesis is acceptable, conditionally acceptable, or requires major revision, and why].
 
-## 2. Overall Strengths
+## 2. Major Strengths of the Thesis
 Bullet points of genuine scholarly or technical strengths. State the supervisor judgment first in bold, followed by supporting evidence:
 - **[Short Label]:** [Judgment-first sentence about the thesis, followed by supporting evidence].
 
