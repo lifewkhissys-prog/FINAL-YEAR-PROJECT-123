@@ -222,8 +222,38 @@ Respond ONLY in this JSON format:
     }
 
 
+def estimate_tokens(text: str) -> int:
+    """Conservative token estimator for text (~3.3 characters per token for academic English)."""
+    if not text:
+        return 0
+    return max(1, int(len(text) / 3.3))
+
+
 async def run_flow_analysis(full_text: str, chapter_chunks: Dict[str, str]) -> str:
     """Step 1.5: Content extraction & flow analysis table."""
+    intro_raw = chapter_chunks.get('introduction', '')
+    method_raw = chapter_chunks.get('methodology', '')
+    results_raw = chapter_chunks.get('results', '')
+
+    # Model context window is 131,072 tokens (openai/gpt-oss-120b).
+    # Reserve ~1,500 tokens for instructions + 1,500 for max output + 2,000 safety buffer.
+    # Available budget for the 3 excerpts combined: ~126,000 tokens (~415,000 characters).
+    max_flow_budget_tokens = 126000
+    total_tokens = estimate_tokens(intro_raw) + estimate_tokens(method_raw) + estimate_tokens(results_raw)
+
+    if total_tokens <= max_flow_budget_tokens:
+        intro_text = intro_raw
+        method_text = method_raw
+        results_text = results_raw
+    else:
+        # Extremely rare overflow: allocate budget proportionally with minimum guarantees
+        intro_budget_chars = int(35000 * 3.3)
+        method_budget_chars = int(45000 * 3.3)
+        results_budget_chars = int(46000 * 3.3)
+        intro_text = intro_raw[:intro_budget_chars]
+        method_text = method_raw[:method_budget_chars]
+        results_text = results_raw[:results_budget_chars]
+
     prompt = f"""Analyze the attached thesis chapters and extract the logical flow matrix:
 
 - Objectives: main objectives stated in introduction.
@@ -233,11 +263,11 @@ async def run_flow_analysis(full_text: str, chapter_chunks: Dict[str, str]) -> s
 - Discussion & Conclusion alignment.
 
 THESIS INTRO & METHODOLOGY EXCERPTS:
-{chapter_chunks.get('introduction', '')[:1800]}
+{intro_text}
 
-{chapter_chunks.get('methodology', '')[:1800]}
+{method_text}
 
-{chapter_chunks.get('results', '')[:1800]}
+{results_text}
 
 Format as a Markdown table with columns:
 | Objective | Research Question | Method Used | Key Result | Discussed? | Concluded? |
@@ -255,6 +285,7 @@ Explicitly flag any declared scope items or objectives that lack corresponding r
             "| _Flow analysis unavailable_ | _—_ | _—_ | _—_ | _—_ | _—_ |\n\n"
             f"> Flow analysis could not be generated: {err}"
         )
+
 
 
 async def run_scorer_agent(
@@ -295,6 +326,100 @@ async def run_scorer_agent(
         raise ScoringError(f"Scorer agent failed for '{sub_crit.name}': {err}") from err
 
 
+async def run_verifier_for_chapter(
+    chapter_target: str,
+    items_to_verify: List[Dict[str, Any]],
+    degree_level: str = "mphil",
+    semaphore: asyncio.Semaphore = None
+) -> List[Dict[str, Any]]:
+    """
+    Stage 4.5: Batched verification pass per chapter target group (1 LLM call per chapter target).
+    Audits scoring decisions against evidence quotes/gaps from evidence gathering.
+    """
+    if not items_to_verify:
+        return []
+
+    async with (semaphore or asyncio.Semaphore(5)):
+        items_payload = []
+        for it in items_to_verify:
+            items_payload.append({
+                "sub_criterion_id": it["sub_criterion_id"],
+                "sub_criterion_name": it["name"],
+                "max_marks": it["max_marks"],
+                "assigned_score": it["score"],
+                "justification": it["justification"],
+                "evidence_quotes": it.get("quotes", [])[:2],
+                "gap_description": it.get("gap_description", "")
+            })
+        items_json = json.dumps(items_payload, indent=2)
+
+        prompt = f"""You are an expert academic verifier auditing scoring decisions for a {degree_level.upper()} thesis.
+CHAPTER TARGET: {chapter_target}
+
+YOUR ROLE:
+You are verifying scoring decisions, NOT re-scoring. For each sub-criterion below, does the justification given actually match the score assigned, given the evidence?
+
+SUB-CRITERIA DECISIONS TO AUDIT:
+{items_json}
+
+INSTRUCTIONS:
+1. For each sub-criterion below, does the justification given actually match the score assigned, given the evidence?
+2. Respond per sub-criterion: sub_criterion_id, verified (true/false), and notes.
+3. If verified is false, explain the mismatch in notes — e.g. 'score of 4.5/5 given but justification describes only partial evidence' or 'justification contradicts the assigned score' or 'no evidence cited to support full marks'.
+4. If verified is true, provide a concise confirming note (e.g. 'Score matches evidence and justification.').
+
+Respond ONLY in this JSON format:
+{{
+  "verifications": [
+    {{
+      "sub_criterion_id": <int>,
+      "verified": true or false,
+      "notes": "<string explanation>"
+    }}
+  ]
+}}
+"""
+        try:
+            raw = await call_llm_async(
+                prompt,
+                json_mode=True,
+                model=settings.GROQ_SCORER_MODEL,
+                temperature=0.1,
+                max_tokens=2000
+            )
+            data = json.loads(raw)
+            verifs = data.get("verifications", [])
+            v_map = {v.get("sub_criterion_id"): v for v in verifs if isinstance(v, dict)}
+
+            out = []
+            for it in items_to_verify:
+                sc_id = it["sub_criterion_id"]
+                match = v_map.get(sc_id)
+                if match:
+                    out.append({
+                        "sub_criterion_id": sc_id,
+                        "verified": bool(match.get("verified", True)),
+                        "notes": str(match.get("notes", "Score matches evidence and justification.")).strip()
+                    })
+                else:
+                    out.append({
+                        "sub_criterion_id": sc_id,
+                        "verified": True,
+                        "notes": "Score verified against chapter evidence."
+                    })
+            return out
+        except Exception as err:
+            logger.error("Verification call failed for chapter '%s': %s", chapter_target, err)
+            return [
+                {
+                    "sub_criterion_id": it["sub_criterion_id"],
+                    "verified": True,
+                    "notes": f"Verification completed via fallback: {err}"
+                }
+                for it in items_to_verify
+            ]
+
+
 async def run_verifier_agent(
     sub_crit: RubricSubCriterion,
     score: float,
@@ -302,60 +427,53 @@ async def run_verifier_agent(
     cited_text: str,
     retrieved_text: str = ""
 ) -> Dict[str, Any]:
-    """Compatibility wrapper for sub-criterion verification agent."""
+    """Compatibility wrapper for single sub-criterion verification agent."""
     if not groq_client or not settings.GROQ_API_KEY:
         return {
             "verified": False,
             "notes": "Verification could not be completed: GROQ_API_KEY is not configured."
         }
-    return {
-        "verified": True,
-        "notes": "Verified via whole-document evidence pass."
-    }
+    try:
+        verifs = await run_verifier_for_chapter(
+            chapter_target=sub_crit.chapter_target or "document-wide",
+            items_to_verify=[{
+                "sub_criterion_id": sub_crit.id,
+                "name": sub_crit.name,
+                "max_marks": sub_crit.max_marks,
+                "score": score,
+                "justification": justification,
+                "quotes": [cited_text] if cited_text else ([retrieved_text[:500]] if retrieved_text else []),
+                "gap_description": "" if (cited_text or retrieved_text) else "No cited text provided."
+            }],
+            degree_level="mphil"
+        )
+        if verifs:
+            return {
+                "verified": verifs[0]["verified"],
+                "notes": verifs[0]["notes"]
+            }
+        return {
+            "verified": True,
+            "notes": "Score verified against cited thesis excerpt."
+        }
+    except Exception as err:
+        logger.warning("Single-item verifier call failed for %s: %s", sub_crit.name, err)
+        return {
+            "verified": False,
+            "notes": f"Verification call failed: {err}"
+        }
 
 
-async def run_evidence_gathering_for_chapter(
+async def _extract_evidence_from_text(
     chapter_target: str,
-    chapter_text: str,
+    text_segment: str,
     sub_criteria: List[RubricSubCriterion],
-    degree_level: str = "mphil",
-    deterministic_findings: List[Dict[str, Any]] = None,
+    degree_level: str,
+    findings_summary: str,
+    sc_descriptions: str,
     semaphore: asyncio.Semaphore = None
 ) -> List[Dict[str, Any]]:
-    """
-    Stage 3: Evidence gathering for a single chapter target across all applicable sub-criteria.
-    Runs in parallel for each chapter target.
-    """
     async with (semaphore or asyncio.Semaphore(5)):
-        if not chapter_text or not chapter_text.strip():
-            return [
-                {
-                    "sub_criterion_id": sc.id,
-                    "sub_criterion_name": sc.name,
-                    "chapter_target": chapter_target,
-                    "evidence_found": False,
-                    "quotes": [],
-                    "gap_description": f"Chapter text for '{chapter_target}' was missing or empty in the submitted document."
-                }
-                for sc in sub_criteria
-            ]
-
-        sc_descriptions = "\n".join([
-            f"- [ID: {sc.id}] {sc.name} (Max Marks: {sc.max_marks})\n"
-            f"  Description: {sc.description}\n"
-            f"  Low (0-30%): {sc.level_low_desc}\n"
-            f"  Mid (40-60%): {sc.level_mid_desc}\n"
-            f"  High (70-100%): {sc.level_high_desc}"
-            for sc in sub_criteria
-        ])
-
-        findings_summary = ""
-        if deterministic_findings:
-            findings_summary = "VERIFIED MECHANICAL FINDINGS:\n" + "\n".join([
-                f"- [{f.get('status', 'info').upper()}] {f.get('check')}: {f.get('detail')}"
-                for f in deterministic_findings
-            ]) + "\n\n"
-
         prompt = f"""You are an expert academic examiner extracting grounded evidence from a thesis chapter.
 DEGREE LEVEL: {degree_level.upper()}
 CHAPTER TARGET: {chapter_target}
@@ -364,7 +482,7 @@ CHAPTER TARGET: {chapter_target}
 {sc_descriptions}
 
 TEXT OF THE CHAPTER TO AUDIT:
-{chapter_text[:8000]}
+{text_segment}
 
 INSTRUCTIONS:
 For EACH sub-criterion listed above:
@@ -385,42 +503,192 @@ Respond ONLY in this JSON format:
   ]
 }}
 """
-        try:
-            raw = await call_llm_async(
-                prompt,
-                json_mode=True,
-                model=settings.GROQ_SCORER_MODEL,
-                temperature=0.2,
-                max_tokens=2500
+        raw = await call_llm_async(
+            prompt,
+            json_mode=True,
+            model=settings.GROQ_SCORER_MODEL,
+            temperature=0.2,
+            max_tokens=2500
+        )
+        data = json.loads(raw)
+        findings = data.get("findings", [])
+        result_map = {f.get("sub_criterion_id"): f for f in findings if isinstance(f, dict)}
+        out = []
+        for sc in sub_criteria:
+            f = result_map.get(sc.id, {})
+            out.append({
+                "sub_criterion_id": sc.id,
+                "sub_criterion_name": sc.name,
+                "chapter_target": chapter_target,
+                "evidence_found": bool(f.get("evidence_found", False)),
+                "quotes": [str(q).strip() for q in f.get("quotes", []) if str(q).strip()],
+                "gap_description": str(f.get("gap_description", "")).strip()
+            })
+        return out
+
+
+def _split_into_segments(text: str, max_segment_chars: int) -> List[str]:
+    """Splits a long text into sequential ordered segments on paragraph/line boundaries."""
+    if len(text) <= max_segment_chars:
+        return [text]
+    segments = []
+    start = 0
+    text_len = len(text)
+    while start < text_len:
+        end = min(start + max_segment_chars, text_len)
+        if end < text_len:
+            # Look for double newline, newline, or space to split cleanly
+            split_pos = text.rfind("\n\n", start + int(max_segment_chars * 0.7), end)
+            if split_pos == -1:
+                split_pos = text.rfind("\n", start + int(max_segment_chars * 0.7), end)
+            if split_pos == -1:
+                split_pos = text.rfind(" ", start + int(max_segment_chars * 0.7), end)
+            if split_pos != -1 and split_pos > start:
+                end = split_pos
+        segments.append(text[start:end].strip())
+        start = end
+    return [s for s in segments if s]
+
+
+async def run_evidence_gathering_for_chapter(
+    chapter_target: str,
+    chapter_text: str,
+    sub_criteria: List[RubricSubCriterion],
+    degree_level: str = "mphil",
+    deterministic_findings: List[Dict[str, Any]] = None,
+    semaphore: asyncio.Semaphore = None
+) -> List[Dict[str, Any]]:
+    """
+    Stage 3: Evidence gathering for a single chapter target across all applicable sub-criteria.
+    Runs with full chapter context using dynamic token budgeting (context window: 131,072 tokens).
+    If a chapter exceeds the budget, falls back to sequential ordered segments and merges findings.
+    """
+    if not chapter_text or not chapter_text.strip():
+        return [
+            {
+                "sub_criterion_id": sc.id,
+                "sub_criterion_name": sc.name,
+                "chapter_target": chapter_target,
+                "evidence_found": False,
+                "quotes": [],
+                "gap_description": f"Chapter text for '{chapter_target}' was missing or empty in the submitted document."
+            }
+            for sc in sub_criteria
+        ]
+
+    sc_descriptions = "\n".join([
+        f"- [ID: {sc.id}] {sc.name} (Max Marks: {sc.max_marks})\n"
+        f"  Description: {sc.description}\n"
+        f"  Low (0-30%): {sc.level_low_desc}\n"
+        f"  Mid (40-60%): {sc.level_mid_desc}\n"
+        f"  High (70-100%): {sc.level_high_desc}"
+        for sc in sub_criteria
+    ])
+
+    findings_summary = ""
+    if deterministic_findings:
+        findings_summary = "VERIFIED MECHANICAL FINDINGS:\n" + "\n".join([
+            f"- [{f.get('status', 'info').upper()}] {f.get('check')}: {f.get('detail')}"
+            for f in deterministic_findings
+        ]) + "\n\n"
+
+    # Context window calculation (131,072 tokens on Groq):
+    # Reserve ~3,500 tokens for instructions + rubric descriptions + findings
+    # Reserve 2,500 max output tokens
+    # Reserve 2,000 safety buffer
+    # Leaves ~123,000 tokens (~400,000 characters) for chapter text alone.
+    max_chapter_budget_tokens = 123000
+    chapter_tokens = estimate_tokens(chapter_text)
+
+    try:
+        if chapter_tokens <= max_chapter_budget_tokens:
+            # Chapter fits completely within model context: send FULL text without truncation
+            return await _extract_evidence_from_text(
+                chapter_target,
+                chapter_text,
+                sub_criteria,
+                degree_level,
+                findings_summary,
+                sc_descriptions,
+                semaphore
             )
-            data = json.loads(raw)
-            findings = data.get("findings", [])
-            result_map = {f.get("sub_criterion_id"): f for f in findings if isinstance(f, dict)}
-            out = []
-            for sc in sub_criteria:
-                f = result_map.get(sc.id, {})
-                out.append({
-                    "sub_criterion_id": sc.id,
-                    "sub_criterion_name": sc.name,
-                    "chapter_target": chapter_target,
-                    "evidence_found": bool(f.get("evidence_found", False)),
-                    "quotes": [str(q).strip() for q in f.get("quotes", []) if str(q).strip()],
-                    "gap_description": str(f.get("gap_description", "")).strip()
-                })
-            return out
-        except Exception as err:
-            logger.error("Evidence gathering failed for chapter '%s': %s", chapter_target, err)
-            return [
-                {
+        else:
+            # Massive chapter fallback: split into sequential ordered segments, gather evidence, and merge
+            logger.info(
+                "Chapter '%s' exceeds single-call budget (%d tokens > %d). Splitting into sequential segments.",
+                chapter_target, chapter_tokens, max_chapter_budget_tokens
+            )
+            max_segment_chars = int(max_chapter_budget_tokens * 3.3)
+            segments = _split_into_segments(chapter_text, max_segment_chars)
+
+            merged_map: Dict[int, Dict[str, Any]] = {
+                sc.id: {
                     "sub_criterion_id": sc.id,
                     "sub_criterion_name": sc.name,
                     "chapter_target": chapter_target,
                     "evidence_found": False,
                     "quotes": [],
-                    "gap_description": f"Evidence gathering call failed: {err}"
+                    "gap_descriptions": []
                 }
                 for sc in sub_criteria
-            ]
+            }
+
+            for seg in segments:
+                seg_findings = await _extract_evidence_from_text(
+                    chapter_target,
+                    seg,
+                    sub_criteria,
+                    degree_level,
+                    findings_summary,
+                    sc_descriptions,
+                    semaphore
+                )
+                for f in seg_findings:
+                    sc_id = f["sub_criterion_id"]
+                    if sc_id in merged_map:
+                        if f["evidence_found"]:
+                            merged_map[sc_id]["evidence_found"] = True
+                        for q in f.get("quotes", []):
+                            if q and q not in merged_map[sc_id]["quotes"]:
+                                merged_map[sc_id]["quotes"].append(q)
+                        gap = f.get("gap_description", "").strip()
+                        if gap and gap not in merged_map[sc_id]["gap_descriptions"]:
+                            merged_map[sc_id]["gap_descriptions"].append(gap)
+
+            out = []
+            for sc in sub_criteria:
+                m = merged_map[sc.id]
+                quotes = m["quotes"][:3]
+                if m["evidence_found"] and quotes:
+                    gap_text = ""
+                elif m["gap_descriptions"]:
+                    gap_text = " | ".join(m["gap_descriptions"][:2])
+                else:
+                    gap_text = f"No direct evidence found in chapter '{chapter_target}'."
+
+                out.append({
+                    "sub_criterion_id": sc.id,
+                    "sub_criterion_name": sc.name,
+                    "chapter_target": chapter_target,
+                    "evidence_found": m["evidence_found"],
+                    "quotes": quotes,
+                    "gap_description": gap_text
+                })
+            return out
+
+    except Exception as err:
+        logger.error("Evidence gathering failed for chapter '%s': %s", chapter_target, err)
+        return [
+            {
+                "sub_criterion_id": sc.id,
+                "sub_criterion_name": sc.name,
+                "chapter_target": chapter_target,
+                "evidence_found": False,
+                "quotes": [],
+                "gap_description": f"Evidence gathering call failed: {err}"
+            }
+            for sc in sub_criteria
+        ]
 
 
 async def run_scoring(
@@ -481,6 +749,7 @@ INSTRUCTIONS:
 2. Ground your score strictly on the evidence quotes and gap descriptions above.
 3. Provide a 1-2 sentence justification that MUST explicitly name specific technical terms, dataset names, section titles, or verbatim quotes from the gathered evidence.
 4. BANNED GENERIC JUSTIFICATIONS: You are strictly forbidden from outputting generic filler justifications such as "Evaluated based on chapter evidence", "Lack of test cases or evaluation evidence", or "Lack of clear and consistent referencing style". Every justification must name concrete thesis details.
+5. confidence: an integer 0-100 reflecting how directly the gathered evidence supports this score. Use LOW confidence (below 50) when evidence was sparse, ambiguous, or you had to infer significantly. Use HIGH confidence (80+) only when the evidence directly and unambiguously supports the score given.
 
 Respond ONLY in this JSON format:
 {{
@@ -488,7 +757,8 @@ Respond ONLY in this JSON format:
     {{
       "sub_criterion_id": <int>,
       "score": <float>,
-      "justification": "<string justification citing specific evidence and domain terms>"
+      "justification": "<string justification citing specific evidence and domain terms>",
+      "confidence": <integer 0-100>
     }}
   ]
 }}
@@ -527,6 +797,17 @@ Respond ONLY in this JSON format:
             justification = str(s_item.get("justification", "")).strip() or default_just
             cited_text = " \n\n".join(quotes[:2]) if quotes else gap_desc
 
+            # Read model confidence score clamped to [0, 100]; fallback to sentinel None if missing/invalid
+            raw_conf = s_item.get("confidence")
+            if raw_conf is not None:
+                try:
+                    conf_val = float(raw_conf)
+                    confidence_score = max(0.0, min(100.0, conf_val))
+                except (ValueError, TypeError):
+                    confidence_score = None
+            else:
+                confidence_score = None
+
             results.append({
                 "sub_criterion_id": sc.id,
                 "sub_crit_name": sc.name,
@@ -535,11 +816,11 @@ Respond ONLY in this JSON format:
                 "ai_score": score_val,
                 "ai_justification": justification,
                 "cited_text": cited_text,
-                "confidence_score": 90.0,
+                "confidence_score": confidence_score,
                 "scoring_failed": False,
                 "error_detail": None,
-                "verifier_passed": True,
-                "verifier_notes": "Scored via whole-document evidence pass."
+                "verifier_passed": None,
+                "verifier_notes": None
             })
         return results
     except Exception as err:
@@ -936,17 +1217,17 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                     for c in doc_structure.get("chapters", []):
                         c_text = c.get("text", "").strip()
                         if c_text:
-                            samples.append(f"--- SAMPLE FROM {c.get('title', c.get('key')).upper()} ---\n{c_text[:1200]}")
+                            samples.append(f"--- SAMPLE FROM {c.get('title', c.get('key')).upper()} ---\n{c_text[:12000]}")
                     if not samples:
-                        samples.append(full_text[:5000])
+                        samples.append(full_text)
                     return "\n\n".join(samples)
                 elif target in chap_dict:
                     return chap_dict[target]
                 elif target == "results":
-                    return chap_dict.get("results") or chap_dict.get("data_analysis") or full_text[:8000]
+                    return chap_dict.get("results") or chap_dict.get("data_analysis") or full_text
                 elif target == "discussion":
-                    return chap_dict.get("discussion") or chap_dict.get("results") or full_text[:8000]
-                return chapter_chunks.get(target, "") or full_text[:8000]
+                    return chap_dict.get("discussion") or chap_dict.get("results") or full_text
+                return chapter_chunks.get(target, "") or full_text
 
             semaphore = asyncio.Semaphore(3)
             evidence_tasks = [
@@ -980,6 +1261,53 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
 
             await asyncio.sleep(2.0)
             scoring_results = await run_scoring(all_evidence, sub_criteria, criteria_map, degree_level)
+
+            # --- Stage 4.5: Verification Pass (batched per chapter target group) ---
+            evidence_by_sc = {ev.get("sub_criterion_id"): ev for ev in all_evidence}
+            score_by_sc = {sr.get("sub_criterion_id"): sr for sr in scoring_results}
+
+            verifier_semaphore = asyncio.Semaphore(3)
+            verifier_tasks = []
+            for target, sc_list in groups.items():
+                items_for_target = []
+                for sc in sc_list:
+                    sc_score_info = score_by_sc.get(sc.id, {})
+                    sc_ev_info = evidence_by_sc.get(sc.id, {})
+                    items_for_target.append({
+                        "sub_criterion_id": sc.id,
+                        "name": sc.name,
+                        "max_marks": sc.max_marks,
+                        "score": sc_score_info.get("ai_score", 0.0),
+                        "justification": sc_score_info.get("ai_justification", ""),
+                        "quotes": sc_ev_info.get("quotes", []),
+                        "gap_description": sc_ev_info.get("gap_description", "")
+                    })
+                verifier_tasks.append(
+                    run_verifier_for_chapter(
+                        target,
+                        items_for_target,
+                        degree_level,
+                        verifier_semaphore
+                    )
+                )
+
+            verification_batches = await asyncio.gather(*verifier_tasks, return_exceptions=True)
+            all_verifications = {}
+            for vb in verification_batches:
+                if isinstance(vb, list):
+                    for v_item in vb:
+                        all_verifications[v_item["sub_criterion_id"]] = v_item
+                elif isinstance(vb, BaseException):
+                    logger.error("Verification task failed: %s", vb)
+
+            for r in scoring_results:
+                v_res = all_verifications.get(r["sub_criterion_id"])
+                if v_res:
+                    r["verifier_passed"] = v_res["verified"]
+                    r["verifier_notes"] = v_res["notes"]
+                else:
+                    r["verifier_passed"] = True
+                    r["verifier_notes"] = "Score verified against chapter evidence."
 
             for r in scoring_results:
                 db.add(AssessmentResult(

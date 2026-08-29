@@ -1,27 +1,32 @@
-# DevLab — AI-Powered Online Assessment System for Universities
+# Evidence-Based Thesis Assessor
 
-DevLab is an interactive, curriculum-aligned online programming assessment and learning platform designed for universities. It provides two distinct learning/testing modes: **Guided Mode** (scenario-based inline coding walkthroughs) and **Challenge Mode** (competitive programming assessments).
+An automated, LLM-powered academic thesis assessment and critique engine for universities. Aligned with official institutional rubrics (such as KNUST MPhil / MSc thesis assessment rubrics), the system provides structured evidence extraction, preliminary compliance verification, double-run scoring with verifier audits, and automated narrative critique report generation.
 
-This repository contains the high-fidelity frontend prototype built with React, Tailwind CSS, Monaco Editor, Zustand, and Framer Motion.
 
-## Documentation & Guides
+## Core Features
 
-To understand the project and run a high-fidelity demonstration, please refer to the following documents:
+- **Thesis Document Ingestion & Parsing**: Parses `.docx` thesis manuscripts, extracts chapters, sub-sections, text embeddings, and visual elements.
+- **Rubric-Driven Multi-Tier Assessment**: Evaluates submissions against customizable institutional rubrics with lettered sub-criteria.
+- **Two-Pass Scoring with Verifier Auditing**: Dual AI scoring pass to verify score consistency, with automated verifier rationale and supervisor override controls.
+- **Formatted DOCX Report Export**: Generates official formatted evaluation reports ready for academic committees.
+- **Supervisor Dashboard**: Centralized dashboard for managing thesis submissions, reviewing verification checks, adjusting criterion scores, and approving narrative reports.
 
-*   **[Demo Guide (DEMO.md)](DEMO.md)**: Detailed step-by-step instructions for running the project, logging in as Lecturer/Student, and executing various workflows (course creation, timed assessments, challenge & guided mode editors, grading).
-*   **[Project Scope Document (devlab_guide.md)](devlab_guide.md)**: Details on the target project architecture, database models, Docker sandboxing execution pipelines, and timelines.
-*   **[Frontend Guides (frontend_guide/)](frontend_guide/devlab_frontend_index.md)**: Reference specifications for implementing or auditing the frontend components (e.g. Monaco wrapper, countdown timer, private routing).
-*   **[Backend Guides (backend_guide/)](backend_guide/devlab_backend_index.md)**: Architecture documents detailing the submission pipeline, Docker containers, SQLite executor, and auth protocols.
+## Documentation & Specs
 
-## Getting Started
+- **[Build Specification (thesis_assessment_build_spec.md)](thesis_assessment_build_spec.md)**: Details on the agent pipeline architecture, scoring algorithms, and database models.
+- **[Fix Specification (thesis-assessor-fix-spec.md)](thesis-assessor-fix-spec.md)**: Technical spec for strict persona constraints, flow matrix synthesis, and report formatting rules.
 
-1. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-2. **Run Dev Server**:
-   ```bash
-   npm run dev
-   ```
-3. Open `http://localhost:5173/` in your browser.
+## Quick Start
+
+### Frontend (React + Vite)
+```bash
+npm install
+npm run dev
+```
+
+### Backend (FastAPI + SQLAlchemy + Groq/Claude)
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
 

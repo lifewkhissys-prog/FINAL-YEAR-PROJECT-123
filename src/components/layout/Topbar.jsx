@@ -1,4 +1,4 @@
-import { LogOut, Menu, Bell, BookOpen, Code2, LayoutDashboard, FolderClock, Clock, Library, FileText, GraduationCap, Users } from 'lucide-react';
+import { LogOut, Menu, Bell, LayoutDashboard, Upload, BookOpenCheck, GraduationCap } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { ThemeSwitcher } from '../ui/ThemeSwitcher';
@@ -15,24 +15,11 @@ export function Topbar({ onMenuClick }) {
     navigate('/login');
   };
 
-  const isLecturer = user?.role === 'lecturer';
-
-  const studentLinks = [
-    { to: '/student/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/student/courses', icon: BookOpen, label: 'My Courses' },
-    { to: '/student/assessments/active', icon: Clock, label: 'Active Assessments' },
-    { to: '/student/submissions', icon: FolderClock, label: 'My Submissions' },
+  const thesisLinks = [
+    { to: '/thesis/dashboard', icon: LayoutDashboard, label: 'Supervisor Dashboard' },
+    { to: '/thesis/upload', icon: Upload, label: 'Upload Thesis' },
+    { to: '/thesis/rubric', icon: BookOpenCheck, label: 'Rubric Criteria' },
   ];
-
-  const lecturerLinks = [
-    { to: '/lecturer/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/lecturer/courses', icon: BookOpen, label: 'My Courses' },
-    { to: '/lecturer/problems', icon: Code2, label: 'Problem Bank' },
-    { to: '/lecturer/assessments', icon: Library, label: 'Assessments' },
-    { to: '/lecturer/thesis-critique', icon: FileText, label: 'Thesis Critique' },
-  ];
-
-  const links = isLecturer ? lecturerLinks : studentLinks;
 
   return (
     <header className="h-16 border-b border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 w-full shrink-0">
@@ -52,7 +39,7 @@ export function Topbar({ onMenuClick }) {
 
         {/* Desktop Navigation Links */}
         <nav className="hidden lg:flex items-center gap-1.5">
-          {links.map((link) => {
+          {thesisLinks.map((link) => {
             const Icon = link.icon;
             const isActive = location.pathname === link.to || location.pathname.startsWith(link.to);
             
@@ -78,7 +65,7 @@ export function Topbar({ onMenuClick }) {
       <div className="flex items-center gap-2 sm:gap-4">
         <ThemeSwitcher />
         
-        <button className="btn-icon relative">
+        <button className="btn-icon relative" title="Notifications">
           <Bell size={18} />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-blue ring-2 ring-[var(--bg-primary)]"></span>
         </button>
@@ -89,9 +76,9 @@ export function Topbar({ onMenuClick }) {
         {user && (
           <div className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[var(--bg-elevated)] border border-default">
             <div className="w-6 h-6 rounded-full bg-white/5 border border-default flex items-center justify-center shrink-0">
-              {isLecturer ? <GraduationCap size={13} className="text-brand-blue" /> : <Users size={13} className="text-brand-blue" />}
+              <GraduationCap size={13} className="text-brand-blue" />
             </div>
-            <div className="text-left leading-none max-w-[120px] overflow-hidden">
+            <div className="text-left leading-none max-w-[140px] overflow-hidden">
               <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{user.name}</p>
               <p className="text-[9px] text-[var(--text-muted)] capitalize truncate font-mono mt-0.5">{user.role}</p>
             </div>
@@ -109,3 +96,4 @@ export function Topbar({ onMenuClick }) {
     </header>
   );
 }
+

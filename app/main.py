@@ -3,9 +3,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.migrations import apply_migrations
-from app.seed import seed_database, RUBRIC_SETS
+from app.seed import seed_database
 from app.utils.errors import register_error_handlers
-from app.routers import thesis, auth, courses, assessments, problems, dashboard, submissions
+from app.routers import thesis, auth
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -36,7 +36,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Standard Starlette CORSMiddleware configuration with flexible origin allowlist + universal regex
 import os
 origins = [
     "http://localhost:5173", "http://localhost:3000", "http://localhost:4173",
@@ -58,19 +57,15 @@ app.add_middleware(
 # Register custom global error handlers
 register_error_handlers(app)
 
-# Include Routers
+# Include Routers for Thesis Assessor
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(courses.router, prefix="/api/courses", tags=["Courses"])
-app.include_router(assessments.router, prefix="/api/assessments", tags=["Assessments"])
-app.include_router(problems.router, prefix="/api/problems", tags=["Problems"])
-app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(thesis.router)
-app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions"])
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
     return {"status": "ok"}
+
 
 
 

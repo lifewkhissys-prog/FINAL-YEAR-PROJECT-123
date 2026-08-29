@@ -19,7 +19,3 @@ class User(Base):
     role:          Mapped[UserRole] = mapped_column(SAEnum(UserRole), nullable=False)
     created_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Relationships
-    courses:     Mapped[list["Course"]]     = relationship("Course", back_populates="lecturer")
-    enrollments: Mapped[list["Enrollment"]] = relationship("Enrollment", back_populates="student")
-    submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="student")

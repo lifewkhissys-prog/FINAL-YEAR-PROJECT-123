@@ -48,9 +48,6 @@ services:
       - GROQ_FAST_MODEL=${GROQ_FAST_MODEL:-llama-3.1-8b-instant}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
       - THESIS_UPLOAD_MAX_MB=20
-      - JUDGE0_API_URL=${JUDGE0_API_URL:-http://localhost:2358}
-      - JUDGE0_API_KEY=${JUDGE0_API_KEY:-}
-      - JUDGE0_USE_AUTH_HEADER=False
     depends_on:
       db:
         condition: service_healthy
@@ -61,3 +58,4 @@ volumes:
   postgres_data:
   redis_data:
   fastembed_cache:
+

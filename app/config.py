@@ -35,11 +35,9 @@ class Settings(BaseSettings):
     # Embedding model (sentence-transformers compatible name)
     EMBEDDING_MODEL: str = Field(default="BAAI/bge-small-en-v1.5")
 
-    # Sandbox limits
-    SANDBOX_CPU_QUOTA: int = Field(default=50000)
-
     class Config:
         env_file = ".env"
         extra = "ignore"
 
 settings = Settings()
+

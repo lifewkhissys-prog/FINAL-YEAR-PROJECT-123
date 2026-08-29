@@ -61,7 +61,8 @@ Parse the document into a JSON structure before any LLM call touches it:
 }
 ```
 
-Critical: set `font_info_available` / `spacing_info_available` honestly based on
+Critical: set `font_info_available` / 
+`spacing_info_available` honestly based on
 whether you actually parsed the docx XML for formatting, not just extracted
 text. **If you didn't parse formatting metadata, the pipeline must not be
 allowed to make formatting compliance claims** (Times New Roman, line spacing,

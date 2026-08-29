@@ -161,7 +161,7 @@ class PlagiarismCheck(Base):
     section_name:          Mapped[str | None]   = mapped_column(String(100), nullable=True)
     similarity_percentage: Mapped[float]        = mapped_column(Float, nullable=False)
     matched_sources:       Mapped[Any | None]   = mapped_column(JSON, nullable=True)
-    provider:              Mapped[str]          = mapped_column(String(50), default="copyleaks")
+    provider:              Mapped[str]          = mapped_column(String(50), default="openalex_vector_ngram")
     checked_at:            Mapped[datetime]     = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     submission: Mapped["ThesisSubmission"] = relationship("ThesisSubmission", back_populates="plagiarism_checks")
