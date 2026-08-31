@@ -138,14 +138,31 @@ def extract_metadata_from_text(full_text: str) -> dict:
                 break
 
     # 4. Detect Degree Level
-    if re.search(r"(?i)\b(ph\.?d|doctor of philosophy|doctoral)\b", cover_text):
-        extracted["degree_level"] = "phd"
-    elif re.search(r"(?i)\b(m\.?phil|master of philosophy)\b", cover_text):
-        extracted["degree_level"] = "mphil"
-    elif re.search(r"(?i)\b(m\.?sc|master of science|taught master)\b", cover_text):
-        extracted["degree_level"] = "msc"
-    elif re.search(r"(?i)\b(b\.?sc|bachelor|undergraduate|bsc|final year project|fyp)\b", cover_text):
+    # First, strip lines that describe supervisors, examiners, or heads of department so their degrees don't falsely classify the student's thesis
+    degree_search_text = re.sub(r"(?i)(?:supervisor|supervised by|co-supervisor|examiner|head of department|hod|dean)\s*[:\-\s]+[^\n\r]+", "", cover_text)
+
+    # Check for explicit degree statements first (most reliable)
+    m_deg = re.search(r"(?i)(?:degree of|for the award of|requirements for (?:the )?(?:degree of)?)\s*([^\n\r,]+)", degree_search_text)
+    candidate_deg = m_deg.group(1).lower() if m_deg else ""
+
+    if candidate_deg and re.search(r"\b(b\.?sc|bachelor|undergraduate|final year project|fyp)\b", candidate_deg):
         extracted["degree_level"] = "undergraduate"
+    elif candidate_deg and re.search(r"\b(m\.?phil|master of philosophy)\b", candidate_deg):
+        extracted["degree_level"] = "mphil"
+    elif candidate_deg and re.search(r"\b(m\.?sc|master of science|taught master)\b", candidate_deg):
+        extracted["degree_level"] = "msc"
+    elif candidate_deg and re.search(r"\b(ph\.?d|doctor of philosophy|doctoral)\b", candidate_deg):
+        extracted["degree_level"] = "phd"
+    else:
+        # Fallback to general scan on degree_search_text (checking undergraduate before postgraduate)
+        if re.search(r"(?i)\b(b\.?sc|bachelor|undergraduate|final year project|fyp)\b", degree_search_text):
+            extracted["degree_level"] = "undergraduate"
+        elif re.search(r"(?i)\b(m\.?phil|master of philosophy)\b", degree_search_text):
+            extracted["degree_level"] = "mphil"
+        elif re.search(r"(?i)\b(m\.?sc|master of science|taught master)\b", degree_search_text):
+            extracted["degree_level"] = "msc"
+        elif re.search(r"(?i)\b(ph\.?d|doctor of philosophy|doctoral)\b", degree_search_text):
+            extracted["degree_level"] = "phd"
 
     # 5. Detect Programme
     known_programmes = [
