@@ -95,11 +95,11 @@ async def call_llm_async(
     system_prompt: str = "",
     model: str = None,
     json_mode: bool = False,
-    max_tokens: int = 3500,
+    max_tokens: int = 2000,
     retries: int = 4,
     temperature: float = 0.2
 ) -> str:
-    """Invokes Groq LLM API dynamically with 429 Rate-Limit retry backoff and 404 model fallback."""
+    """Invokes Groq LLM API dynamically with 429 Rate-Limit retry backoff, 404 model fallback, and token budgeting."""
     primary_model = model or settings.GROQ_SCORER_MODEL
 
     if not groq_client or not settings.GROQ_API_KEY:
@@ -110,6 +110,23 @@ async def call_llm_async(
         if fallback not in candidate_models:
             candidate_models.append(fallback)
 
+    # Groq on-demand tier enforces a hard 8,000 Tokens Per Minute (TPM) limit.
+    # Groq rate limiter validates: estimated_prompt_tokens + max_completion_tokens <= 8,000.
+    # We guarantee that prompt + completion does not exceed 6,800 tokens.
+    max_groq_budget = 6800
+    effective_max_tokens = min(max_tokens, 2000)
+    prompt_tokens = estimate_tokens(prompt)
+    if prompt_tokens + effective_max_tokens > max_groq_budget:
+        allowed_prompt_tokens = max(800, max_groq_budget - effective_max_tokens)
+        allowed_chars = int(allowed_prompt_tokens * 3.3)
+        if len(prompt) > allowed_chars:
+            logger.warning(
+                "Prompt size (~%d tokens) exceeds safe Groq TPM budget (%d). Truncating to %d chars.",
+                prompt_tokens, max_groq_budget, allowed_chars
+            )
+            head_len = int(allowed_chars * 0.7)
+            tail_len = int(allowed_chars * 0.3)
+            prompt = prompt[:head_len] + "\n\n[... content truncated to fit Groq rate limit ...]\n\n" + prompt[-tail_len:]
 
     last_error = None
     for model_name in candidate_models:
@@ -124,7 +141,7 @@ async def call_llm_async(
                     "model": model_name,
                     "messages": messages,
                     "temperature": temperature,
-                    "max_completion_tokens": max_tokens,
+                    "max_completion_tokens": effective_max_tokens,
                 }
                 if json_mode:
                     kwargs["response_format"] = {"type": "json_object"}
@@ -141,7 +158,6 @@ async def call_llm_async(
 
                 return res.choices[0].message.content
 
-
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
@@ -149,7 +165,12 @@ async def call_llm_async(
                     logger.warning("Groq model '%s' returned 404/not found. Trying next candidate model...", model_name)
                     break  # Try next candidate model
                 elif ("429" in err_str or "413" in err_str or "rate limit" in err_str or "rate_limit" in err_str or "tokens" in err_str) and attempt < retries - 1:
-                    wait_time = (attempt + 1) * 4.0
+                    if "413" in err_str or "too large" in err_str:
+                        # Dynamically shrink prompt and output tokens on retry for 413
+                        cut_chars = int(len(prompt) * 0.6)
+                        prompt = prompt[:int(cut_chars * 0.7)] + "\n\n[... prompt truncated due to model token limit ...]\n\n" + prompt[-int(cut_chars * 0.3):]
+                        effective_max_tokens = min(effective_max_tokens, 1000)
+                    wait_time = (attempt + 1) * 3.0
                     logger.warning("Groq rate/token limit hit for %s (attempt %s/%s). Waiting %ss.", model_name, attempt + 1, retries, wait_time)
                     await asyncio.sleep(wait_time)
                 else:
@@ -235,24 +256,12 @@ async def run_flow_analysis(full_text: str, chapter_chunks: Dict[str, str]) -> s
     method_raw = chapter_chunks.get('methodology', '')
     results_raw = chapter_chunks.get('results', '')
 
-    # Model context window is 131,072 tokens (openai/gpt-oss-120b).
-    # Reserve ~1,500 tokens for instructions + 1,500 for max output + 2,000 safety buffer.
-    # Available budget for the 3 excerpts combined: ~126,000 tokens (~415,000 characters).
-    max_flow_budget_tokens = 126000
-    total_tokens = estimate_tokens(intro_raw) + estimate_tokens(method_raw) + estimate_tokens(results_raw)
-
-    if total_tokens <= max_flow_budget_tokens:
-        intro_text = intro_raw
-        method_text = method_raw
-        results_text = results_raw
-    else:
-        # Extremely rare overflow: allocate budget proportionally with minimum guarantees
-        intro_budget_chars = int(35000 * 3.3)
-        method_budget_chars = int(45000 * 3.3)
-        results_budget_chars = int(46000 * 3.3)
-        intro_text = intro_raw[:intro_budget_chars]
-        method_text = method_raw[:method_budget_chars]
-        results_text = results_raw[:results_budget_chars]
+    # Groq on-demand tier enforces an 8,000 TPM limit.
+    # Take representative excerpts from intro, methodology, and results (first ~3,500 chars each).
+    # Total input: ~10,500 chars (~3,000 tokens), comfortably fitting within the Groq TPM rate limit.
+    intro_text = (intro_raw or "")[:3500]
+    method_text = (method_raw or "")[:3500]
+    results_text = (results_raw or "")[:3500]
 
     prompt = f"""Analyze the attached thesis chapters and extract the logical flow matrix:
 
@@ -275,7 +284,7 @@ Format as a Markdown table with columns:
 Explicitly flag any declared scope items or objectives that lack corresponding results or methodology.
 """
     try:
-        table = await call_llm_async(prompt, json_mode=False, model=settings.GROQ_SCORER_MODEL, max_tokens=1500)
+        table = await call_llm_async(prompt, json_mode=False, model=settings.GROQ_FAST_MODEL or settings.GROQ_SCORER_MODEL, max_tokens=1000)
         return table
     except Exception as err:
         logger.error("Flow analysis failed: %s", err)
@@ -347,9 +356,9 @@ async def run_verifier_for_chapter(
                 "sub_criterion_name": it["name"],
                 "max_marks": it["max_marks"],
                 "assigned_score": it["score"],
-                "justification": it["justification"],
-                "evidence_quotes": it.get("quotes", [])[:2],
-                "gap_description": it.get("gap_description", "")
+                "justification": (it.get("justification") or "")[:150],
+                "evidence_quotes": [q[:150] for q in it.get("quotes", [])[:2]],
+                "gap_description": (it.get("gap_description", "") or "")[:120]
             })
         items_json = json.dumps(items_payload, indent=2)
 
@@ -383,9 +392,9 @@ Respond ONLY in this JSON format:
             raw = await call_llm_async(
                 prompt,
                 json_mode=True,
-                model=settings.GROQ_SCORER_MODEL,
+                model=settings.GROQ_FAST_MODEL or settings.GROQ_SCORER_MODEL,
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=1000
             )
             data = json.loads(raw)
             verifs = data.get("verifications", [])
@@ -508,7 +517,7 @@ Respond ONLY in this JSON format:
             json_mode=True,
             model=settings.GROQ_SCORER_MODEL,
             temperature=0.2,
-            max_tokens=2500
+            max_tokens=1200
         )
         data = json.loads(raw)
         findings = data.get("findings", [])
@@ -560,8 +569,8 @@ async def run_evidence_gathering_for_chapter(
 ) -> List[Dict[str, Any]]:
     """
     Stage 3: Evidence gathering for a single chapter target across all applicable sub-criteria.
-    Runs with full chapter context using dynamic token budgeting (context window: 131,072 tokens).
-    If a chapter exceeds the budget, falls back to sequential ordered segments and merges findings.
+    Runs with dynamic token budgeting bounded by Groq's 8,000 TPM limit.
+    If a chapter exceeds the budget, splits into sequential ordered segments and merges findings.
     """
     if not chapter_text or not chapter_text.strip():
         return [
@@ -592,17 +601,16 @@ async def run_evidence_gathering_for_chapter(
             for f in deterministic_findings
         ]) + "\n\n"
 
-    # Context window calculation (131,072 tokens on Groq):
-    # Reserve ~3,500 tokens for instructions + rubric descriptions + findings
-    # Reserve 2,500 max output tokens
-    # Reserve 2,000 safety buffer
-    # Leaves ~123,000 tokens (~400,000 characters) for chapter text alone.
-    max_chapter_budget_tokens = 123000
+    # Token budgeting for Groq 8,000 TPM limit:
+    # Instructions + rubric descriptions + findings: ~1,500 tokens
+    # Output completion tokens: 1,200 tokens
+    # Safe segment budget for chapter text alone: ~3,500 tokens (~11,500 characters)
+    max_chapter_budget_tokens = 3500
     chapter_tokens = estimate_tokens(chapter_text)
 
     try:
         if chapter_tokens <= max_chapter_budget_tokens:
-            # Chapter fits completely within model context: send FULL text without truncation
+            # Chapter fits completely within single-call budget
             return await _extract_evidence_from_text(
                 chapter_target,
                 chapter_text,
@@ -613,7 +621,7 @@ async def run_evidence_gathering_for_chapter(
                 semaphore
             )
         else:
-            # Massive chapter fallback: split into sequential ordered segments, gather evidence, and merge
+            # Chapter exceeds single-call budget: split into sequential segments, gather, and merge
             logger.info(
                 "Chapter '%s' exceeds single-call budget (%d tokens > %d). Splitting into sequential segments.",
                 chapter_target, chapter_tokens, max_chapter_budget_tokens
@@ -704,12 +712,12 @@ async def run_scoring(
     """
     evidence_payload = []
     for ev in all_evidence:
-        quotes = [q[:800] for q in ev.get("quotes", [])[:2]]
+        quotes = [q[:250] for q in ev.get("quotes", [])[:2]]
         evidence_payload.append({
             "sub_criterion_id": ev.get("sub_criterion_id"),
             "target": ev.get("chapter_target"),
             "quotes": quotes,
-            "gap": (ev.get("gap_description") or "")[:400]
+            "gap": (ev.get("gap_description") or "")[:150]
         })
     evidence_summary = json.dumps(evidence_payload, separators=(',', ':'))
 
@@ -721,7 +729,7 @@ async def run_scoring(
             "name": sc.name,
             "max_marks": sc.max_marks,
             "target": sc.chapter_target,
-            "high": (sc.level_high_desc or "")[:120]
+            "high": (sc.level_high_desc or "")[:100]
         })
 
     sc_summary = json.dumps(sc_payload, separators=(',', ':'))
@@ -769,7 +777,7 @@ Respond ONLY in this JSON format:
             json_mode=True,
             model=settings.GROQ_SCORER_MODEL,
             temperature=0.1,
-            max_tokens=3000
+            max_tokens=1500
         )
         data = json.loads(raw)
         score_entries = data.get("scores", [])
@@ -944,13 +952,13 @@ async def run_narrative_synthesis(
         ch = str(ev.get("chapter_target", "general")).upper()
         sc_id = ev.get("sub_criterion_id")
         quotes = ev.get("quotes", [])
-        quote_text = " | ".join(f'"{q[:220]}"' for q in quotes[:2]) if quotes else ""
-        gap = (ev.get("gap_description") or "")[:250]
+        quote_text = " | ".join(f'"{q[:160]}"' for q in quotes[:2]) if quotes else ""
+        gap = (ev.get("gap_description") or "")[:150]
         line = f"• [{ch}] Sub-Criterion #{sc_id}:"
         if quote_text:
-            line += f" Evidence Quotes: {quote_text}."
+            line += f" Quotes: {quote_text}."
         if gap:
-            line += f" Gap/Defect: {gap}."
+            line += f" Gap: {gap}."
         ev_lines.append(line)
     evidence_text = "\n".join(ev_lines) if ev_lines else "No specific quotes or gaps logged."
 
@@ -960,14 +968,14 @@ async def run_narrative_synthesis(
         sc_name = r.get("sub_crit_name") or f"Sub-Criterion {sc_id}"
         ai_score = r.get("ai_score", 0.0)
         max_m = r.get("max_marks", 0.0)
-        just = (r.get("ai_justification") or "")[:200]
+        just = (r.get("ai_justification") or "")[:120]
         score_lines.append(f"• #{sc_id} ({sc_name}): {ai_score}/{max_m} — {just}")
     scores_text = "\n".join(score_lines) if score_lines else "No sub-criteria scored."
 
     findings = doc_structure.get("findings", [])
-    findings_text = "\n".join(f"• {f}" for f in findings[:10]) if findings else "No mechanical compliance issues flagged."
+    findings_text = "\n".join(f"• {f}" for f in findings[:6]) if findings else "No mechanical compliance issues flagged."
 
-    flow_summary = (flow_table or "Flow matrix not generated.")[:1500]
+    flow_summary = (flow_table or "Flow matrix not generated.")[:800]
 
     prompt = f"""You are a senior academic supervisor writing a formal, critical Thesis Assessment Report directly to your student ({student_name}).
 
@@ -1047,7 +1055,7 @@ Signature: _____________________________________
 Date: __________________________________________
 """
     try:
-        return await call_synthesis_llm_async(prompt, max_tokens=4000)
+        return await call_synthesis_llm_async(prompt, max_tokens=2200)
     except Exception as err:
         logger.error("Narrative synthesis agent failed: %s", err)
         return f"# Evaluation Report Generation Failed\n\nError: {err}"
@@ -1217,9 +1225,9 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                     for c in doc_structure.get("chapters", []):
                         c_text = c.get("text", "").strip()
                         if c_text:
-                            samples.append(f"--- SAMPLE FROM {c.get('title', c.get('key')).upper()} ---\n{c_text[:12000]}")
+                            samples.append(f"--- SAMPLE FROM {c.get('title', c.get('key')).upper()} ---\n{c_text[:2500]}")
                     if not samples:
-                        samples.append(full_text)
+                        samples.append(full_text[:12000])
                     return "\n\n".join(samples)
                 elif target in chap_dict:
                     return chap_dict[target]
@@ -1229,27 +1237,23 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                     return chap_dict.get("discussion") or chap_dict.get("results") or full_text
                 return chapter_chunks.get(target, "") or full_text
 
-            semaphore = asyncio.Semaphore(3)
-            evidence_tasks = [
-                run_evidence_gathering_for_chapter(
-                    target,
-                    get_text_for_target(target),
-                    sc_list,
-                    degree_level,
-                    deterministic_findings,
-                    semaphore
-                )
-                for target, sc_list in groups.items()
-            ]
-
-            evidence_batches = await asyncio.gather(*evidence_tasks, return_exceptions=True)
-
             all_evidence: List[Dict[str, Any]] = []
-            for b in evidence_batches:
-                if isinstance(b, list):
-                    all_evidence.extend(b)
-                elif isinstance(b, BaseException):
-                    logger.error("Evidence gathering task failed: %s", b)
+            for target, sc_list in groups.items():
+                target_text = get_text_for_target(target)
+                try:
+                    b = await run_evidence_gathering_for_chapter(
+                        target,
+                        target_text,
+                        sc_list,
+                        degree_level,
+                        deterministic_findings,
+                        semaphore=None
+                    )
+                    if isinstance(b, list):
+                        all_evidence.extend(b)
+                except Exception as b_err:
+                    logger.error("Evidence gathering task for '%s' failed: %s", target, b_err)
+                await asyncio.sleep(0.6)
 
             submission.pipeline_progress = 70
             await db.commit()
@@ -1259,15 +1263,14 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
             submission.pipeline_progress = 75
             await db.commit()
 
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(1.5)
             scoring_results = await run_scoring(all_evidence, sub_criteria, criteria_map, degree_level)
 
             # --- Stage 4.5: Verification Pass (batched per chapter target group) ---
             evidence_by_sc = {ev.get("sub_criterion_id"): ev for ev in all_evidence}
             score_by_sc = {sr.get("sub_criterion_id"): sr for sr in scoring_results}
 
-            verifier_semaphore = asyncio.Semaphore(3)
-            verifier_tasks = []
+            all_verifications = {}
             for target, sc_list in groups.items():
                 items_for_target = []
                 for sc in sc_list:
@@ -1282,23 +1285,19 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                         "quotes": sc_ev_info.get("quotes", []),
                         "gap_description": sc_ev_info.get("gap_description", "")
                     })
-                verifier_tasks.append(
-                    run_verifier_for_chapter(
+                try:
+                    vb = await run_verifier_for_chapter(
                         target,
                         items_for_target,
                         degree_level,
-                        verifier_semaphore
+                        semaphore=None
                     )
-                )
-
-            verification_batches = await asyncio.gather(*verifier_tasks, return_exceptions=True)
-            all_verifications = {}
-            for vb in verification_batches:
-                if isinstance(vb, list):
-                    for v_item in vb:
-                        all_verifications[v_item["sub_criterion_id"]] = v_item
-                elif isinstance(vb, BaseException):
-                    logger.error("Verification task failed: %s", vb)
+                    if isinstance(vb, list):
+                        for v_item in vb:
+                            all_verifications[v_item["sub_criterion_id"]] = v_item
+                except Exception as v_err:
+                    logger.error("Verification task for '%s' failed: %s", target, v_err)
+                await asyncio.sleep(0.5)
 
             for r in scoring_results:
                 v_res = all_verifications.get(r["sub_criterion_id"])
