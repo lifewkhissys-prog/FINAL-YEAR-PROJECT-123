@@ -1,4 +1,5 @@
 import json
+import re
 import asyncio
 import logging
 from datetime import datetime, timezone
@@ -90,6 +91,58 @@ class ScoringError(RuntimeError):
     """Raised when a sub-criterion could not be scored. Never substituted with a default mark."""
 
 
+def parse_json_from_llm(raw: str) -> Any:
+    """Extract and parse JSON from LLM output, handling markdown code fences, reasoning tags, and leading/trailing text."""
+    if not raw or not raw.strip():
+        return {}
+    text = raw.strip()
+    # Strip <think>...</think> reasoning blocks if present (common in Qwen models)
+    text = re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # Try markdown code fences ```json ... ``` or ``` ... ```
+    fence_match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except Exception:
+            pass
+
+    # Try finding outermost { ... }
+    sb = text.find("{")
+    eb = text.rfind("}")
+    if sb != -1 and eb > sb:
+        try:
+            return json.loads(text[sb:eb + 1])
+        except Exception:
+            pass
+
+    # Try finding outermost [ ... ]
+    sb = text.find("[")
+    eb = text.rfind("]")
+    if sb != -1 and eb > sb:
+        try:
+            return json.loads(text[sb:eb + 1])
+        except Exception:
+            pass
+
+    # Try auto-repairing incomplete or truncated JSON
+    sb_obj = text.find("{")
+    if sb_obj != -1:
+        for suffix in ["\n}", "\n]}", "}\n]}", "\"\n}", "\"]\n}"]:
+            try:
+                return json.loads(text[sb_obj:] + suffix)
+            except Exception:
+                pass
+
+    raise ValueError(f"Could not parse valid JSON from LLM response: {text[:200]}")
+
+
 async def call_llm_async(
     prompt: str,
     system_prompt: str = "",
@@ -106,11 +159,11 @@ async def call_llm_async(
         raise ValueError("GROQ_API_KEY is not configured in settings or .env file.")
 
     candidate_models = [primary_model]
-    for fallback in ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b"]:
+    for fallback in ["groq/compound-mini", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.6-27b"]:
         if fallback not in candidate_models:
             candidate_models.append(fallback)
 
-    # Groq on-demand tier enforces a hard 8,000 Tokens Per Minute (TPM) limit.
+    # Groq on-demand tier enforces a hard 8,000 Tokens Per Minute (TPM) limit on most models (70,000 on compound-mini).
     # Groq rate limiter validates: estimated_prompt_tokens + max_completion_tokens <= 8,000.
     # We guarantee that prompt + completion does not exceed 6,800 tokens.
     max_groq_budget = 6800
@@ -130,6 +183,10 @@ async def call_llm_async(
 
     last_error = None
     for model_name in candidate_models:
+        # Note: qwen models output reasoning tokens (<think>) which cause Groq's gateway
+        # JSON validator to reject immediately with json_validate_failed.
+        use_native_json = json_mode and not ("qwen" in model_name.lower())
+
         for attempt in range(retries):
             try:
                 messages = []
@@ -143,7 +200,7 @@ async def call_llm_async(
                     "temperature": temperature,
                     "max_completion_tokens": effective_max_tokens,
                 }
-                if json_mode:
+                if use_native_json:
                     kwargs["response_format"] = {"type": "json_object"}
                     has_json_mention = any("json" in m["content"].lower() for m in messages)
                     if not has_json_mention:
@@ -161,9 +218,24 @@ async def call_llm_async(
             except Exception as e:
                 last_error = e
                 err_str = str(e).lower()
-                if "model_not_found" in err_str or "does not exist" in err_str or "404" in err_str:
+                
+                # 1. Daily Token limit (TPD) reached (e.g. Limit 200,000 TPD exhausted for the day)
+                if "tokens per day" in err_str or "tpd" in err_str:
+                    logger.warning("Daily token limit (TPD) reached for model '%s'. Moving immediately to next candidate...", model_name)
+                    break  # Don't wait minutes; switch immediately to next candidate model!
+
+                # 2. Model not found / 404
+                elif "model_not_found" in err_str or "does not exist" in err_str or "404" in err_str:
                     logger.warning("Groq model '%s' returned 404/not found. Trying next candidate model...", model_name)
                     break  # Try next candidate model
+
+                # 3. Groq gateway JSON validation failure (HTTP 400 json_validate_failed)
+                elif ("json_validate_failed" in err_str or "failed to validate json" in err_str) and use_native_json:
+                    logger.warning("Model '%s' failed Groq server-side JSON validation. Retrying without response_format...", model_name)
+                    use_native_json = False
+                    continue  # Retry same model immediately without response_format constraint
+
+                # 4. Rate limit (TPM 429/413)
                 elif ("429" in err_str or "413" in err_str or "rate limit" in err_str or "rate_limit" in err_str or "tokens" in err_str) and attempt < retries - 1:
                     if "413" in err_str or "too large" in err_str:
                         # Dynamically shrink prompt and output tokens on retry for 413
@@ -220,7 +292,7 @@ Respond ONLY in this JSON format:
     notes = ""
     try:
         raw = await call_llm_async(prompt, json_mode=True, model=settings.GROQ_FAST_MODEL, max_tokens=400)
-        notes = str(json.loads(raw).get("notes", "")).strip()
+        notes = str(parse_json_from_llm(raw).get("notes", "")).strip()
     except Exception as err:
         logger.warning("Preliminary check commentary unavailable: %s", err)
 
@@ -396,7 +468,7 @@ Respond ONLY in this JSON format:
                 temperature=0.1,
                 max_tokens=1000
             )
-            data = json.loads(raw)
+            data = parse_json_from_llm(raw)
             verifs = data.get("verifications", [])
             v_map = {v.get("sub_criterion_id"): v for v in verifs if isinstance(v, dict)}
 
@@ -519,7 +591,7 @@ Respond ONLY in this JSON format:
             temperature=0.2,
             max_tokens=1200
         )
-        data = json.loads(raw)
+        data = parse_json_from_llm(raw)
         findings = data.get("findings", [])
         result_map = {f.get("sub_criterion_id"): f for f in findings if isinstance(f, dict)}
         out = []
@@ -779,7 +851,7 @@ Respond ONLY in this JSON format:
             temperature=0.1,
             max_tokens=1500
         )
-        data = json.loads(raw)
+        data = parse_json_from_llm(raw)
         score_entries = data.get("scores", [])
         score_map = {s.get("sub_criterion_id"): s for s in score_entries if isinstance(s, dict)}
 
@@ -1091,7 +1163,7 @@ Respond ONLY in this JSON format:
             temperature=0.0,
             max_tokens=400
         )
-        data = json.loads(raw)
+        data = parse_json_from_llm(raw)
         return {
             "passed": bool(data.get("passed", True)),
             "flags": [str(f) for f in data.get("flags", [])]
