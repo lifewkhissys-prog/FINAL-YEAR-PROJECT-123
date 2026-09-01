@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     GROQ_VERIFIER_MODEL: str = Field(default="openai/gpt-oss-20b")
     GROQ_SYNTHESIS_MODEL: str = Field(default="openai/gpt-oss-120b")
     GROQ_FAST_MODEL: str = Field(default="openai/gpt-oss-20b")
-    GROQ_VISION_MODEL: str = Field(default="openai/gpt-oss-120b")
+    GROQ_VISION_MODEL: str = Field(default="llama-3.2-11b-vision-preview")
 
     # AgentRouter / Claude API configuration
     AGENTROUTER_API_KEY: str = Field(default="")

@@ -26,9 +26,9 @@ async def analyze_figure_image(image_bytes: bytes, caption_hint: str = "") -> Op
         )
 
         vision_models = [
-            getattr(settings, "GROQ_VISION_MODEL", "openai/gpt-oss-120b"),
-            "openai/gpt-oss-120b",
-            "openai/gpt-oss-20b"
+            getattr(settings, "GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview"),
+            "llama-3.2-11b-vision-preview",
+            "llama-3.2-90b-vision-preview"
         ]
 
 
