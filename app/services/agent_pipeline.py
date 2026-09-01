@@ -601,26 +601,65 @@ Respond ONLY in this JSON format:
   ]
 }}
 """
-        raw = await call_llm_async(
-            prompt,
-            json_mode=True,
-            model=settings.GROQ_SCORER_MODEL,
-            temperature=0.2,
-            max_tokens=1200
+        data = None
+        system_msg = (
+            "You are an expert academic thesis examiner. Your sole function is to audit the provided chapter text "
+            "against each specified sub-criterion ID, extract verbatim positive quotes, and return valid JSON. "
+            "Never decline, output conversational apologies, or ask for clarification. Return the JSON object directly."
         )
-        data = parse_json_from_llm(raw)
+
+        candidate_models = [
+            settings.GROQ_SCORER_MODEL,
+            settings.GROQ_FAST_MODEL,
+            "groq/compound-mini"
+        ]
+
+        for attempt, model_name in enumerate(candidate_models):
+            try:
+                raw = await call_llm_async(
+                    prompt,
+                    system_prompt=system_msg,
+                    json_mode=True,
+                    model=model_name,
+                    temperature=0.1,
+                    max_tokens=1400
+                )
+                parsed = parse_json_from_llm(raw)
+                if isinstance(parsed, dict) and "findings" in parsed:
+                    data = parsed
+                    break
+            except Exception as parse_err:
+                logger.warning(
+                    "Evidence extraction attempt %d with model %s failed: %s. Trying fallback model...",
+                    attempt + 1, model_name, parse_err
+                )
+                await asyncio.sleep(0.8)
+
+        if not data:
+            data = {"findings": []}
+
         findings = data.get("findings", [])
         result_map = {f.get("sub_criterion_id"): f for f in findings if isinstance(f, dict)}
         out = []
         for sc in sub_criteria:
             f = result_map.get(sc.id, {})
+            quotes = [str(q).strip() for q in f.get("quotes", []) if str(q).strip()]
+            evidence_found = bool(f.get("evidence_found", False)) and len(quotes) > 0
+            gap_desc = str(f.get("gap_description", "")).strip()
+            
+            # If evidence was found, clear out any stray gap string
+            if evidence_found and not gap_desc:
+                gap_desc = ""
+            elif not evidence_found and not gap_desc:
+                gap_desc = f"No explicit positive evidence for '{sc.name}' was located in this section of '{chapter_target}'."
+
             out.append({
                 "sub_criterion_id": sc.id,
                 "sub_criterion_name": sc.name,
                 "chapter_target": chapter_target,
-                "evidence_found": bool(f.get("evidence_found", False)),
-                "quotes": [str(q).strip() for q in f.get("quotes", []) if str(q).strip()],
-                "gap_description": str(f.get("gap_description", "")).strip()
+                "evidence_found": evidence_found,
+                "quotes": quotes,
+                "gap_description": gap_desc
             })
         return out
 
