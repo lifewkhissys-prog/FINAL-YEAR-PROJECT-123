@@ -4,16 +4,25 @@ import NavigationHeader from '../../components/NavigationHeader';
 import DocumentViewer from '../../components/DocumentViewer';
 import { authFetch, safeJson } from '../../api/axiosInstance';
 
-const CHAPTERS = [
+const FIVE_CHAPTERS = [
   { key: 'all', label: 'Full Manuscript', icon: 'auto_stories' },
   { key: 'introduction', label: '1. Introduction', icon: 'info' },
   { key: 'literature_review', label: '2. Literature Review', icon: 'menu_book' },
   { key: 'methodology', label: '3. Methodology', icon: 'psychology' },
-  { key: 'data_analysis', label: '4. Data Analysis', icon: 'analytics' },
-  { key: 'results', label: '5. Results & Findings', icon: 'assessment' },
-  { key: 'discussion', label: '6. Discussion', icon: 'forum' },
-  { key: 'conclusion', label: '7. Conclusions', icon: 'task_alt' },
-  { key: 'references', label: '8. References', icon: 'format_quote' }
+  { key: 'results_and_discussion', label: '4. Results & Discussion', icon: 'assessment' },
+  { key: 'conclusion', label: '5. Conclusions', icon: 'task_alt' },
+  { key: 'references', label: 'References', icon: 'format_quote' }
+];
+
+const SIX_CHAPTERS = [
+  { key: 'all', label: 'Full Manuscript', icon: 'auto_stories' },
+  { key: 'introduction', label: '1. Introduction', icon: 'info' },
+  { key: 'literature_review', label: '2. Literature Review', icon: 'menu_book' },
+  { key: 'methodology', label: '3. Methodology', icon: 'psychology' },
+  { key: 'results', label: '4. Results & Findings', icon: 'assessment' },
+  { key: 'discussion', label: '5. Discussion', icon: 'forum' },
+  { key: 'conclusion', label: '6. Conclusions', icon: 'task_alt' },
+  { key: 'references', label: 'References', icon: 'format_quote' }
 ];
 
 export default function CriterionScoringPage() {
@@ -25,6 +34,7 @@ export default function CriterionScoringPage() {
   const initialChapter = queryParams.get('chapter') || 'introduction';
   const targetSubCritId = queryParams.get('target');
 
+  const [chapterStructure, setChapterStructure] = useState('five_chapter');
   const [activeChapter, setActiveChapter] = useState(initialChapter);
   const [results, setResults] = useState([]);
   const [loadingResults, setLoadingResults] = useState(true);
@@ -33,6 +43,30 @@ export default function CriterionScoringPage() {
   const [highlightedSubCritId, setHighlightedSubCritId] = useState(null);
 
   const documentReaderRef = useRef(null);
+
+  // Load submission metadata to know chapter structure
+  useEffect(() => {
+    async function loadSubmission() {
+      try {
+        const res = await authFetch(`/api/submissions/${id}`);
+        if (res.ok) {
+          const data = await safeJson(res);
+          if (data?.chapter_structure) {
+            setChapterStructure(data.chapter_structure);
+          } else if (data?.structure_option === 'manuscript') {
+            setChapterStructure('five_chapter');
+          } else {
+            setChapterStructure('five_chapter');
+          }
+        }
+      } catch (err) {
+        console.error("Error loading submission metadata:", err);
+      }
+    }
+    loadSubmission();
+  }, [id]);
+
+  const chapters = chapterStructure === 'six_chapter' ? SIX_CHAPTERS : FIVE_CHAPTERS;
 
   // Sync active chapter from URL parameter
   useEffect(() => {
@@ -144,7 +178,10 @@ export default function CriterionScoringPage() {
   const unscoredCount = results.length - results.filter(r => (overrideScores[r.sub_criterion_id] ?? r.ai_score) !== null).length;
 
   const isFullManuscript = activeChapter === 'all';
-  const activeChapterLabel = CHAPTERS.find(c => c.key === activeChapter)?.label || activeChapter;
+  const activeChapterLabel = chapters.find(c => c.key === activeChapter)?.label
+    || (activeChapter === 'results' || activeChapter === 'discussion' || activeChapter === 'results_and_discussion'
+        ? (chapterStructure === 'six_chapter' ? (activeChapter === 'discussion' ? '5. Discussion' : '4. Results & Findings') : '4. Results & Discussion')
+        : (activeChapter === 'conclusion' ? (chapterStructure === 'six_chapter' ? '6. Conclusions' : '5. Conclusions') : activeChapter));
 
   return (
     <div className="h-screen max-h-screen bg-background text-on-surface font-body flex flex-col overflow-hidden">
@@ -173,8 +210,10 @@ export default function CriterionScoringPage() {
               <h2 className="font-serif text-xs font-bold text-on-surface-variant uppercase tracking-wider">Chapters</h2>
             </div>
             <nav className="space-y-0.5">
-              {CHAPTERS.map(ch => {
-                const isActive = activeChapter === ch.key;
+              {chapters.map(ch => {
+                const isActive = activeChapter === ch.key
+                  || (ch.key === 'results_and_discussion' && (activeChapter === 'results' || activeChapter === 'discussion'))
+                  || (ch.key === 'results' && activeChapter === 'results_and_discussion');
                 return (
                   <button
                     key={ch.key}

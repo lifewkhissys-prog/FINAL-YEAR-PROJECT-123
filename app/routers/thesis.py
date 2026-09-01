@@ -231,6 +231,8 @@ async def list_submissions(
             "is_referred": band["is_referred"],
             "unscored_criteria": unscored,
             "error_detail": s.error_detail,
+            "structure_option": s.structure_option,
+            "chapter_structure": s.chapter_structure,
             "pipeline_step": s.pipeline_step,
             "pipeline_progress": s.pipeline_progress,
             "supervisor_recommendation": s.supervisor_recommendation or band.get("recommendation")
@@ -266,6 +268,8 @@ async def get_submission(
         "submitted_at": sub.submitted_at,
         "preliminary_check_passed": sub.preliminary_check_passed,
         "plagiarism_score": sub.plagiarism_score,
+        "structure_option": sub.structure_option,
+        "chapter_structure": sub.chapter_structure,
         "error_detail": sub.error_detail,
         "pipeline_step": sub.pipeline_step,
         "pipeline_progress": sub.pipeline_progress,
