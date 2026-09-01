@@ -398,25 +398,38 @@ def classify_heading(para: str, structure_option: str, chapter_structure: str = 
     if not _looks_like_heading(para):
         return None
 
-    # Check combined results and discussion first
-    if re.search(r"(?i)\b(?:results?\s+and\s+discussion|findings?\s+and\s+discussion|analysis\s+and\s+discussion|results?\s+and\s+analysis)\b", para):
-        if chapter_structure == "five_chapter":
-            return "results_and_discussion"
-        else:
-            return "results"
+    # 1. If the heading starts with an explicit chapter number (e.g. "2.1 Introduction", "4.4.1 Inconsistency"),
+    # the leading chapter number defines which chapter it belongs to. This prevents keywords like "introduction"
+    # in "2.1 Introduction" or "recommendation" in "4.4.1 ..." from re-routing across chapters.
+    sec_match = re.match(r"^\s*(\d+)\.\d+", para)
+    if sec_match:
+        sec_ch_num = int(sec_match.group(1))
+        mapped = NUMBERED_CHAPTER_MAP.get(chapter_structure, {}).get(sec_ch_num)
+        if mapped:
+            return mapped
+        return NUMBERED_CHAPTER_MAP.get(structure_option, {}).get(sec_ch_num)
 
-    for key, pattern in CHAPTER_PATTERNS:
-        if re.search(pattern, para):
-            if chapter_structure == "five_chapter" and key in ("results", "discussion"):
-                return "results_and_discussion"
-            return key
-
+    # 2. Check explicit chapter number (e.g. "Chapter One", "Chapter 2")
     number = _chapter_number(para)
     if number is not None:
         mapped = NUMBERED_CHAPTER_MAP.get(chapter_structure, {}).get(number)
         if mapped:
             return mapped
         return NUMBERED_CHAPTER_MAP.get(structure_option, {}).get(number)
+
+    # 3. Check combined results and discussion first
+    if re.search(r"(?i)\b(?:results?\s+and\s+discussion|findings?\s+and\s+discussion|analysis\s+and\s+discussion|results?\s+and\s+analysis)\b", para):
+        if chapter_structure == "five_chapter":
+            return "results_and_discussion"
+        else:
+            return "results"
+
+    # 4. Check chapter keywords
+    for key, pattern in CHAPTER_PATTERNS:
+        if re.search(pattern, para):
+            if chapter_structure == "five_chapter" and key in ("results", "discussion"):
+                return "results_and_discussion"
+            return key
 
     return None
 
