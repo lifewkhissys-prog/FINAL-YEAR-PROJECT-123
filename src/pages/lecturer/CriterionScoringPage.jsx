@@ -332,19 +332,19 @@ export default function CriterionScoringPage() {
 
                     {/* Evidence Citation Quote & Highlight Button */}
                     {(item.cited_text || item.evidence_quote) && (
-                      <div className="bg-blue-50/70 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800/60 space-y-2 shadow-xs">
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-blue-900 dark:text-blue-300 flex items-center gap-1">
-                          <span className="material-symbols-outlined text-xs text-blue-600 dark:text-blue-400">format_quote</span>
+                      <div className="bg-surface-container-low dark:bg-slate-900/90 p-3.5 rounded-xl border border-blue-500/30 dark:border-blue-500/40 border-l-4 border-l-blue-600 space-y-2.5 shadow-sm">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-sm text-blue-600 dark:text-blue-400">format_quote</span>
                           Evidence Citation
                         </div>
-                        <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-normal">
+                        <p className="text-xs md:text-[13px] font-normal text-slate-900 dark:text-white leading-relaxed">
                           "{item.cited_text || item.evidence_quote}"
                         </p>
                         <button
                           onClick={() => handleHighlightQuote(item.sub_criterion_id, item.cited_text || item.evidence_quote)}
-                          className="w-full py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-md flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                          className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all shadow-sm cursor-pointer"
                         >
-                          <span className="material-symbols-outlined text-xs text-white">search</span>
+                          <span className="material-symbols-outlined text-sm text-white">search</span>
                           Highlight Evidence in Document
                         </button>
                       </div>
