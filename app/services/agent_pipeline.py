@@ -178,9 +178,18 @@ async def call_llm_async(
                 "Prompt size (~%d tokens) exceeds safe Groq TPM budget (%d). Truncating to %d chars.",
                 prompt_tokens, max_groq_budget, allowed_chars
             )
-            head_len = int(allowed_chars * 0.7)
-            tail_len = int(allowed_chars * 0.3)
-            prompt = prompt[:head_len] + "\n\n[... content truncated to fit Groq rate limit ...]\n\n" + prompt[-tail_len:]
+            instr_idx = prompt.find("\nINSTRUCTIONS:")
+            if instr_idx == -1:
+                instr_idx = prompt.find("\nRespond ONLY in this JSON format:")
+            
+            if instr_idx != -1 and len(prompt) - instr_idx < 1800:
+                instructions_part = prompt[instr_idx:]
+                avail_head_chars = max(500, allowed_chars - len(instructions_part))
+                prompt = prompt[:avail_head_chars] + "\n\n[... content truncated to fit rate limit ...]\n\n" + instructions_part
+            else:
+                head_len = int(allowed_chars * 0.7)
+                tail_len = int(allowed_chars * 0.3)
+                prompt = prompt[:head_len] + "\n\n[... content truncated to fit Groq rate limit ...]\n\n" + prompt[-tail_len:]
 
     last_error = None
     for model_name in candidate_models:
@@ -682,10 +691,10 @@ async def run_evidence_gathering_for_chapter(
         ]) + "\n\n"
 
     # Token budgeting for Groq 8,000 TPM limit:
-    # Instructions + rubric descriptions + findings: ~1,500 tokens
+    # Instructions + rubric descriptions + findings: ~1,200 tokens
     # Output completion tokens: 1,200 tokens
-    # Safe segment budget for chapter text alone: ~3,500 tokens (~11,500 characters)
-    max_chapter_budget_tokens = 3500
+    # Safe segment budget for chapter text alone: ~2,200 tokens (~7,200 characters)
+    max_chapter_budget_tokens = 2200
     chapter_tokens = estimate_tokens(chapter_text)
 
     try:
