@@ -153,6 +153,7 @@ Each uploaded thesis and its assessment state.
 | `preliminary_check_notes` | `Text` nullable | LLM-generated summary of compliance findings |
 | `compliance_findings` | `JSON` nullable | Structured list of mechanical compliance check results |
 | `structure_option` | `String(20)` nullable | `"monograph"` (Guide Option 1) or `"manuscript"` (Option 2) |
+| `chapter_structure` | `String(30)` nullable | `"five_chapter"` (Results & Discussion merged) or `"six_chapter"` (separate Results and Discussion) |
 | `error_detail` | `Text` nullable | Error message if pipeline failed |
 | `flow_analysis_table` | `Text` nullable | Markdown table of objectives → methods → results alignment |
 | `plagiarism_score` | `Float` nullable | Overall plagiarism similarity percentage |
@@ -270,14 +271,15 @@ triggered by `POST /api/submissions/{id}/assess`.
 **Function:** `extract_document_structure()` in `app/services/thesis_parser.py`
 
 **What it does:**
-1. Splits the full text into chapter chunks using `chunk_thesis_by_chapters()`, which detects chapter headings via regex patterns against the KNUST Guide's Option 1 (monograph) and Option 2 (manuscript) structures.
+1. Splits the full text into chapter chunks using `chunk_thesis_by_chapters()`, which detects chapter headings via regex patterns adapting to both 5-chapter combined structures and 6-chapter separate structures.
 2. Detects the structure option (`monograph` or `manuscript`) via `detect_structure_option()`.
-3. Extracts tables (regex: `Table N.N: ...`), figures (regex: `Figure N.N: ...`), TOC section numbers, and references.
-4. For PDF files, extracts up to 5 embedded images and sends each to the Groq Vision API via `analyze_figure_image_sync()` for technical content extraction.
-5. Cross-checks each bibliography entry against the thesis body text for in-text citation verification.
-6. Runs `run_deterministic_findings()` which checks: duplicate section numbers, uncited references, word count conformity, and missing chapters.
+3. Detects the chapter structure (`five_chapter` or `six_chapter`) via `detect_chapter_structure()`. Documents with a combined "Results and Discussion" / "Analysis and Discussion" heading or 5 chapters ending in Conclusion are detected as `five_chapter` without forcing a false split. Documents with separate Results and Discussion chapters (and Chapter 6 Conclusion) are detected as `six_chapter`. Ambiguous headings fall back to `five_chapter`.
+4. Extracts tables (regex: `Table N.N: ...`), figures (regex: `Figure N.N: ...`), TOC section numbers, and references.
+5. For PDF files, extracts up to 5 embedded images and sends each to the Groq Vision API via `analyze_figure_image_sync()` for technical content extraction.
+6. Cross-checks each bibliography entry against the thesis body text for in-text citation verification.
+7. Runs `run_deterministic_findings()` which checks: duplicate section numbers, uncited references, word count conformity, and missing chapters.
 
-**Result stored:** `submission.structure_option` set in DB. `doc_structure` dict kept in memory for later stages.
+**Result stored:** `submission.structure_option` and `submission.chapter_structure` set in DB. `doc_structure` dict (containing the exact detected chapters) kept in memory for later stages.
 
 ### 3.2 Stage 2: Rubric Loading (Database Query, No LLM)
 
@@ -413,7 +415,11 @@ Respond ONLY in this JSON format:
 }
 ```
 
-**Typical call count:** With the standard MPhil rubric (7 criteria, ~20 sub-criteria across 7 chapter targets: introduction, literature_review, methodology, results, discussion, conclusion, document-wide), this stage makes approximately **7 LLM calls**.
+**Chapter Target Mapping & Grouping:**
+- **5-Chapter Submissions (`chapter_structure == "five_chapter"`):** Sub-criteria whose rubric targets are `results`, `discussion`, `data_analysis`, or `results_and_discussion` are automatically consolidated under the unified `results_and_discussion` target. This executes against the single combined Results & Discussion chapter text, preventing evidence starvation or artificial splitting.
+- **6-Chapter Submissions (`chapter_structure == "six_chapter"`):** Sub-criteria preserve separate targets (`results` and `discussion`), querying each respective chapter independently.
+
+**Typical call count:** With the standard rubric, this stage makes approximately **5–6 LLM calls** for 5-chapter submissions (introduction, literature_review, methodology, results_and_discussion, conclusion, document-wide) and **6–7 LLM calls** for 6-chapter submissions.
 
 **Result:** `all_evidence` list kept in memory.
 
@@ -522,14 +528,14 @@ called via `call_synthesis_llm_async()` (line 757).
 **Temperature:** 0.5, max 4,000 tokens.
 
 **Prompt:** Very long (~2,000 tokens of template). It includes:
-- Manuscript metadata (candidate name, title, degree level, structure option, computed score with grade band, rubric source).
+- Manuscript metadata (candidate name, title, degree level, structure option, chapter structure label, detected chapter count, detected chapters list, computed score with grade band, rubric source).
 - All gathered evidence with chapter labels, verbatim quotes, and gaps.
 - All scores with justifications.
 - Mechanical compliance findings.
 - Flow analysis matrix.
 - Strict persona constraints: direct second-person address, synthesis-first strengths, detailed corrections table.
 - Banned generic phrases.
-- Required 8-section report structure: (1) Overall Supervisor's Assessment, (2) Major Strengths, (3) Major Corrections Required (table), (4) Chapter-by-Chapter Critical Assessment, (5) Technical and Methodological Comments, (6) Formatting/Language/Referencing Corrections, (7) Priority Action Plan, (8) Final Recommendation with signature block.
+- Required 8-section report structure: (1) Overall Supervisor's Assessment, (2) Major Strengths, (3) Major Corrections Required (table), (4) Chapter-by-Chapter Critical Assessment (strictly dynamic: generates exactly one subsection per detected chapter actually present in the manuscript, without assuming a fixed 6-chapter list or hallucinating separate chapters), (5) Technical and Methodological Comments, (6) Formatting/Language/Referencing Corrections, (7) Priority Action Plan, (8) Final Recommendation with signature block.
 
 **Result stored:** `submission.narrative_report`.
 

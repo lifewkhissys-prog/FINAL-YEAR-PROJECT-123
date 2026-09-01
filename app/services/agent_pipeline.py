@@ -21,6 +21,7 @@ from app.models.thesis_critique import (
 from app.services.thesis_parser import (
     chunk_thesis_by_chapters,
     detect_structure_option,
+    detect_chapter_structure,
     extract_document_structure,
     run_deterministic_findings
 )
@@ -1056,6 +1057,26 @@ async def run_narrative_synthesis(
 
     flow_summary = (flow_table or "Flow matrix not generated.")[:800]
 
+    detected_chapter_structure = (
+        getattr(submission, "chapter_structure", None)
+        or doc_structure.get("metadata", {}).get("chapter_structure")
+        or "five_chapter"
+    )
+    raw_chapters = doc_structure.get("chapters", [])
+    content_chapters = [c for c in raw_chapters if c.get("key") != "references"]
+    if not content_chapters:
+        content_chapters = raw_chapters
+
+    chapter_bullets = []
+    for idx, c in enumerate(content_chapters, 1):
+        title = c.get("title") or c.get("key", f"Chapter {idx}").replace("_", " ").title()
+        chapter_bullets.append(f"- **Chapter {idx}: {title}**")
+    chapters_spec_text = "\n".join(chapter_bullets) if chapter_bullets else (
+        "- **Chapter 1: Introduction**\n- **Chapter 2: Literature Review**\n- **Chapter 3: Approach and Methodology**\n- **Chapter 4: Results and Discussion**\n- **Chapter 5: Conclusions and Recommendations**"
+    )
+    num_chapters = len(content_chapters) if content_chapters else 5
+    structure_label = "5-Chapter Combined (Results & Discussion merged)" if detected_chapter_structure == "five_chapter" else "6-Chapter Separate (Results & Discussion separate)"
+
     prompt = f"""You are a senior academic supervisor writing a formal, critical Thesis Assessment Report directly to your student ({student_name}).
 
 MANUSCRIPT DETAILS:
@@ -1063,6 +1084,9 @@ Candidate Name: {student_name}
 Thesis Title: {submission.title or 'Untitled Thesis'}
 Degree Level: {degree_label}
 Structure Option: {doc_structure.get('metadata', {}).get('structure_option', 'monograph')}
+Chapter Structure: {structure_label} ({num_chapters} chapters detected)
+Detected Chapters:
+{chapters_spec_text}
 Computed Score: {mark_summary}
 Rubric Source: {rubric_source}
 
@@ -1109,7 +1133,13 @@ Markdown table:
 | No. | Issue Identified | Why It Matters | Required Correction |
 
 ## 4. Chapter-by-Chapter Critical Assessment
-Provide specific, grounded critiques for Chapter 1 (Introduction), Chapter 2 (Literature Review), Chapter 3 (Methodology), Chapter 4 (Results), Chapter 5 (Discussion), and Chapter 6 (Conclusions).
+Provide specific, grounded critiques for each of the {num_chapters} ACTUAL chapters detected in this thesis:
+{chapters_spec_text}
+
+CRITICAL RULES FOR SECTION 4:
+- Produce exactly one subsection per detected chapter listed above (e.g. ### Chapter 1: ..., ### Chapter 2: ...).
+- Only critique chapters that are actually present in the detected chapter list above. Never invent, hallucinate, or split chapters that do not exist in this manuscript.
+- If the thesis has a combined "Results and Discussion" chapter, critique it as a single unified chapter; do NOT force or create a separate Discussion chapter.
 
 ## 5. Technical and Methodological Comments
 - **[Sub-topic, e.g. Dataset Suitability / Experimental Rigour]:** [Specific technical comment grounded in evidence].
@@ -1204,6 +1234,7 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
             doc_structure = extract_document_structure(full_text, submission.file_path)
             chapter_chunks = chunk_thesis_by_chapters(full_text)
             submission.structure_option = doc_structure["metadata"]["structure_option"]
+            submission.chapter_structure = doc_structure["metadata"]["chapter_structure"]
             deterministic_findings = run_deterministic_findings(doc_structure, degree_level)
             doc_structure["findings"] = deterministic_findings
 
@@ -1291,9 +1322,21 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
             submission.pipeline_progress = 50
             await db.commit()
 
+            effective_chapter_structure = (
+                submission.chapter_structure
+                or doc_structure.get("metadata", {}).get("chapter_structure")
+                or "five_chapter"
+            )
+
             groups: Dict[str, List[RubricSubCriterion]] = {}
             for sc in sub_criteria:
                 target = sc.chapter_target or "introduction"
+                if effective_chapter_structure == "five_chapter":
+                    if target in ("results", "discussion", "data_analysis", "results_and_discussion"):
+                        target = "results_and_discussion"
+                else:
+                    if target == "results_and_discussion":
+                        target = "results"
                 groups.setdefault(target, []).append(sc)
 
             chap_dict = {c["key"]: c["text"] for c in doc_structure.get("chapters", [])}
@@ -1310,9 +1353,20 @@ async def execute_thesis_assessment_pipeline(submission_id: int):
                     return "\n\n".join(samples)
                 elif target in chap_dict:
                     return chap_dict[target]
+                elif target == "results_and_discussion":
+                    return (
+                        chap_dict.get("results_and_discussion")
+                        or chapter_chunks.get("results_and_discussion")
+                        or (chap_dict.get("results", "") + "\n\n" + chap_dict.get("discussion", "")).strip()
+                        or full_text
+                    )
                 elif target == "results":
+                    if effective_chapter_structure == "five_chapter":
+                        return chap_dict.get("results_and_discussion") or chapter_chunks.get("results_and_discussion") or chap_dict.get("results") or full_text
                     return chap_dict.get("results") or chap_dict.get("data_analysis") or full_text
                 elif target == "discussion":
+                    if effective_chapter_structure == "five_chapter":
+                        return chap_dict.get("results_and_discussion") or chapter_chunks.get("results_and_discussion") or chap_dict.get("discussion") or full_text
                     return chap_dict.get("discussion") or chap_dict.get("results") or full_text
                 return chapter_chunks.get(target, "") or full_text
 

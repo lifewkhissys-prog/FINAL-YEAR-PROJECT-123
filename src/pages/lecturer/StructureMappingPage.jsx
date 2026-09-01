@@ -370,7 +370,12 @@ export default function StructureMappingPage() {
                     {prelimCheck.structure_option === 'manuscript'
                       ? 'Option 2 — manuscript-based'
                       : 'Option 1 — monograph'}
-                  </span>.</>
+                  </span>
+                  {prelimCheck.chapter_structure && (
+                    <span className="ml-1 text-primary">
+                      ({prelimCheck.chapter_structure === 'five_chapter' ? '5-chapter combined Results & Discussion' : '6-chapter separate Results & Discussion'})
+                    </span>
+                  )}.</>
                 )}
               </p>
             </div>

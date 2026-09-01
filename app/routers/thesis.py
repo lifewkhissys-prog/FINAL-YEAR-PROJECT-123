@@ -462,6 +462,7 @@ async def get_preliminary_check(
         "notes": sub.preliminary_check_notes,
         "findings": sub.compliance_findings or [],
         "structure_option": sub.structure_option,
+        "chapter_structure": sub.chapter_structure,
         "error_detail": sub.error_detail,
     }
 
@@ -788,7 +789,13 @@ async def get_results_by_chapter(
         raise HTTPException(status_code=404, detail="Submission not found")
     check_submission_access(sub, current_user)
 
-    map_stmt = select(ChapterSubCriteriaMap).where(ChapterSubCriteriaMap.chapter_name == chapter_name)
+    query_chaps = [chapter_name]
+    if chapter_name == "results_and_discussion":
+        query_chaps = ["results_and_discussion", "results", "discussion", "data_analysis"]
+    elif sub.chapter_structure == "five_chapter" and chapter_name in ("results", "discussion", "data_analysis"):
+        query_chaps = ["results_and_discussion", "results", "discussion", "data_analysis"]
+
+    map_stmt = select(ChapterSubCriteriaMap).where(ChapterSubCriteriaMap.chapter_name.in_(query_chaps))
     ch_maps = (await db.execute(map_stmt)).scalars().all()
     mapped_sub_ids = [m.sub_criterion_id for m in ch_maps]
 
@@ -804,7 +811,10 @@ async def get_results_by_chapter(
         if not criterion:
             continue
 
-        is_mapped = r.sub_criterion_id in mapped_sub_ids
+        is_mapped = (
+            r.sub_criterion_id in mapped_sub_ids
+            or (sub_c.chapter_target and sub_c.chapter_target in query_chaps)
+        )
         if chapter_name in ("all", "full", "full_thesis"):
             is_mapped = True
         elif not is_mapped:
@@ -818,9 +828,11 @@ async def get_results_by_chapter(
                 is_mapped = True
             elif chapter_name in ["data_analysis", "results"] and crit_title.startswith("4."):
                 is_mapped = True
-            elif chapter_name == "discussion" and crit_title.startswith("5."):
+            elif chapter_name == "discussion" and (crit_title.startswith("5.") or (sub.chapter_structure == "five_chapter" and crit_title.startswith("4."))):
                 is_mapped = True
-            elif chapter_name == "conclusion" and crit_title.startswith("6."):
+            elif chapter_name == "results_and_discussion" and (crit_title.startswith("4.") or crit_title.startswith("5.") or "result" in crit_title or "discussion" in crit_title):
+                is_mapped = True
+            elif chapter_name == "conclusion" and (crit_title.startswith("6.") or (sub.chapter_structure == "five_chapter" and crit_title.startswith("5."))):
                 is_mapped = True
             elif chapter_name == "references" and crit_title.startswith("7."):
                 is_mapped = True

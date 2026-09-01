@@ -205,6 +205,7 @@ CHAPTER_KEYS = [
     "data_analysis",
     "results",
     "discussion",
+    "results_and_discussion",
     "conclusion",
     "references",
 ]
@@ -218,9 +219,8 @@ CHAPTER_KEYS = [
 #   Option 2 (manuscript-based): 1 Introduction, 2 Literature Review, 3 Topical/Thematic chapters,
 #                                4 General Discussion, 5 Conclusions and Recommendations
 #
-# So a bare chapter number is ambiguous across the two options — "Chapter 5" is General Discussion
-# under Option 1 but Conclusions under Option 2. Word-based patterns are therefore tried before
-# number-based ones, and the number-based fallbacks are resolved against the detected option.
+# Additionally, actual practice across Undergraduate, MSc, and many postgraduate theses uses a
+# 5-chapter structure with Results and Discussion unified into a single Chapter 4.
 CHAPTER_PATTERNS = [
     ("references",       r"(?i)^(?:references|bibliography|works\s+cited|literature\s+cited)\b"),
     ("literature_review", r"(?i)\b(?:literature\s+review|review\s+of\s+(?:the\s+)?literature|related\s+work|state\s+of\s+the\s+art|technical\s+background)\b"),
@@ -228,13 +228,29 @@ CHAPTER_PATTERNS = [
     ("conclusion",       r"(?i)\b(?:conclusions?\s+and\s+recommendations?|conclusions?|recommendations?|future\s+work)\b"),
     ("discussion",       r"(?i)\b(?:general\s+discussion|discussion\s+and\s+synthesis)\b"),
     ("data_analysis",    r"(?i)\b(?:data\s+analysis|analysis\s+of\s+data)\b"),
-    ("results",          r"(?i)\b(?:results?\s+and\s+discussion|results?\s+and\s+analysis|results?|findings|evaluation|implementation\s+and\s+testing)\b"),
+    ("results_and_discussion", r"(?i)\b(?:results?\s+and\s+discussion|analysis\s+and\s+discussion|results?\s+and\s+analysis|findings?\s+and\s+discussion)\b"),
+    ("results",          r"(?i)\b(?:results?|findings|evaluation|implementation\s+and\s+testing)\b"),
     ("discussion",       r"(?i)\bdiscussion\b"),
     ("introduction",     r"(?i)\b(?:general\s+introduction|introduction|background\s+(?:to\s+)?(?:the\s+)?study)\b"),
 ]
 
-# Fallback when a heading carries only a chapter number. Keyed by the structural option detected.
+# Fallback when a heading carries only a chapter number. Keyed by detected chapter structure or option.
 NUMBERED_CHAPTER_MAP = {
+    "five_chapter": {
+        1: "introduction",
+        2: "literature_review",
+        3: "methodology",
+        4: "results_and_discussion",
+        5: "conclusion",
+    },
+    "six_chapter": {
+        1: "introduction",
+        2: "literature_review",
+        3: "methodology",
+        4: "results",
+        5: "discussion",
+        6: "conclusion",
+    },
     "monograph": {
         1: "introduction",
         2: "literature_review",
@@ -313,17 +329,87 @@ def detect_structure_option(full_text: str) -> str:
     return "monograph"
 
 
-def classify_heading(para: str, structure_option: str) -> str | None:
+def detect_chapter_structure(full_text: str) -> str:
+    """
+    Detect whether the thesis follows a 5-chapter structure (Results and Discussion
+    merged into one chapter) or a 6-chapter structure (separate Results and Discussion chapters).
+
+    Returns:
+        "five_chapter" or "six_chapter"
+    """
+    if not full_text:
+        return "five_chapter"
+
+    # 1. Check for presence of Chapter 6 heading or numbered section 6.0
+    has_chapter_6 = bool(re.search(
+        r"(?im)^\s*(?:chapter\s+(?:6|six)\b|6\.0\b)|\bchapter\s+(?:6|six)\b",
+        full_text
+    ))
+
+    # 2. Check if Chapter 5 explicitly carries a Conclusion/Recommendations heading
+    has_chapter_5_conclusion = bool(re.search(
+        r"(?i)\bchapter\s+(?:5|five)\b[^\n]{0,80}\b(?:conclusions?|recommendations?)\b|^\s*5\.0\b[^\n]{0,80}\b(?:conclusions?|recommendations?)\b",
+        full_text,
+        re.MULTILINE
+    ))
+
+    # 3. Check for explicit combined headings covering both results & discussion
+    has_combined_heading = bool(re.search(
+        r"(?im)^\s*(?:chapter\s+(?:\d+|[a-z]+)\s*[:\-–—]?\s*)?(?:results?\s+and\s+discussion|analysis\s+and\s+discussion|results?\s+and\s+analysis|findings?\s+and\s+discussion)\b",
+        full_text
+    ))
+
+    # 4. Check for distinct separate Discussion chapter heading
+    has_separate_discussion_heading = bool(re.search(
+        r"(?im)^\s*(?:chapter\s+(?:5|five)\s*[:\-–—]?\s*)?(?:general\s+discussion|discussion\s+and\s+synthesis)\b|^\s*chapter\s+(?:5|five)\s*[:\-–—]?\s*discussion\s*$",
+        full_text
+    ))
+    has_standalone_discussion = bool(re.search(r"(?im)^\s*discussion\s*$", full_text))
+
+    # If chapter 6 is explicitly present, it's 6-chapter
+    if has_chapter_6:
+        return "six_chapter"
+
+    # If Chapter 5 is Conclusion, it is definitively 5-chapter
+    if has_chapter_5_conclusion:
+        return "five_chapter"
+
+    # If there is an explicit combined heading ("Results and Discussion") and no separate discussion heading
+    if has_combined_heading and not has_separate_discussion_heading:
+        return "five_chapter"
+
+    # If there is a distinct separate Results heading AND a distinct separate Discussion heading
+    has_separate_results = bool(re.search(r"(?im)^\s*(?:chapter\s+(?:4|four)\s*[:\-–—]?\s*)?(?:results?|findings?)\s*$", full_text))
+    if has_separate_results and (has_separate_discussion_heading or has_standalone_discussion):
+        return "six_chapter"
+
+    # Fall back to five_chapter (the better-evidenced norm for MSc and Undergraduate) if ambiguous
+    return "five_chapter"
+
+
+def classify_heading(para: str, structure_option: str, chapter_structure: str = "five_chapter") -> str | None:
     """Return the chapter key a heading belongs to, or None if it is not a chapter heading."""
     if not _looks_like_heading(para):
         return None
 
+    # Check combined results and discussion first
+    if re.search(r"(?i)\b(?:results?\s+and\s+discussion|findings?\s+and\s+discussion|analysis\s+and\s+discussion|results?\s+and\s+analysis)\b", para):
+        if chapter_structure == "five_chapter":
+            return "results_and_discussion"
+        else:
+            return "results"
+
     for key, pattern in CHAPTER_PATTERNS:
         if re.search(pattern, para):
+            if chapter_structure == "five_chapter" and key in ("results", "discussion"):
+                return "results_and_discussion"
             return key
 
     number = _chapter_number(para)
     if number is not None:
+        mapped = NUMBERED_CHAPTER_MAP.get(chapter_structure, {}).get(number)
+        if mapped:
+            return mapped
         return NUMBERED_CHAPTER_MAP.get(structure_option, {}).get(number)
 
     return None
@@ -344,12 +430,13 @@ def chunk_thesis_by_chapters(full_text: str) -> Dict[str, str]:
         paragraphs = [line.strip() for line in full_text.split("\n") if line.strip()]
 
     structure_option = detect_structure_option(full_text)
+    chapter_structure = detect_chapter_structure(full_text)
 
     current_chapter = "introduction"
     chapter_buffers: Dict[str, List[str]] = {k: [] for k in chunks.keys()}
 
     for para in paragraphs:
-        matched = classify_heading(para, structure_option)
+        matched = classify_heading(para, structure_option, chapter_structure)
         if matched:
             current_chapter = matched
         chapter_buffers[current_chapter].append(para)
@@ -369,19 +456,27 @@ def chunk_thesis_by_chapters(full_text: str) -> Dict[str, str]:
         chunks["introduction"] = "\n\n".join(paragraphs[:p1])
         chunks["literature_review"] = "\n\n".join(paragraphs[p1:p2])
         chunks["methodology"] = "\n\n".join(paragraphs[p2:p3])
-        chunks["results"] = "\n\n".join(paragraphs[p3:p4])
+        if chapter_structure == "five_chapter":
+            chunks["results_and_discussion"] = "\n\n".join(paragraphs[p3:p4])
+        else:
+            chunks["results"] = "\n\n".join(paragraphs[p3:p4])
         chunks["conclusion"] = "\n\n".join(paragraphs[p4:])
 
-    # `results` and `data_analysis` cover the same material in the Guide's Chapter 4, and
-    # `discussion` may be folded into it. Mirror across the empty ones so a sub-criterion mapped to
-    # one of them is not starved of evidence that was filed under its sibling.
-    if chunks["results"] and not chunks["data_analysis"]:
-        chunks["data_analysis"] = chunks["results"]
-    elif chunks["data_analysis"] and not chunks["results"]:
-        chunks["results"] = chunks["data_analysis"]
+    # Aliasing and mirroring across results / discussion / results_and_discussion
+    if chapter_structure == "five_chapter":
+        if not chunks["results_and_discussion"]:
+            chunks["results_and_discussion"] = chunks["results"] or chunks["discussion"] or chunks["data_analysis"]
+        chunks["results"] = chunks["results_and_discussion"]
+        chunks["discussion"] = chunks["results_and_discussion"]
+    else:
+        if chunks["results"] and not chunks["data_analysis"]:
+            chunks["data_analysis"] = chunks["results"]
+        elif chunks["data_analysis"] and not chunks["results"]:
+            chunks["results"] = chunks["data_analysis"]
 
-    if not chunks["discussion"]:
-        chunks["discussion"] = chunks["results"] or chunks["data_analysis"]
+        if not chunks["discussion"]:
+            chunks["discussion"] = chunks["results"] or chunks["data_analysis"]
+        chunks["results_and_discussion"] = (chunks["results"] + "\n\n" + chunks["discussion"]).strip()
 
     return chunks
 
@@ -393,8 +488,10 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
     """
     chunks = chunk_thesis_by_chapters(full_text)
     paragraphs = [p.strip() for p in full_text.split("\n\n") if p.strip()]
+    chapter_structure = detect_chapter_structure(full_text)
+    structure_option = detect_structure_option(full_text)
 
-    # Extract chapters
+    # Extract chapters based on detected chapter_structure
     chapters = []
     chapter_titles = {
         "introduction": "Introduction",
@@ -403,16 +500,39 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
         "data_analysis": "Data Analysis",
         "results": "Results and Findings",
         "discussion": "Discussion",
+        "results_and_discussion": "Results and Discussion",
         "conclusion": "Conclusions and Recommendations",
         "references": "References"
     }
-    for idx, (k, v) in enumerate(chunks.items(), 1):
+
+    if chapter_structure == "five_chapter":
+        export_keys = [
+            ("introduction", "Introduction"),
+            ("literature_review", "Literature Review"),
+            ("methodology", "Approach and Methodology"),
+            ("results_and_discussion", "Results and Discussion"),
+            ("conclusion", "Conclusions and Recommendations"),
+            ("references", "References"),
+        ]
+    else:
+        export_keys = [
+            ("introduction", "Introduction"),
+            ("literature_review", "Literature Review"),
+            ("methodology", "Approach and Methodology"),
+            ("results", "Results and Findings"),
+            ("discussion", "Discussion"),
+            ("conclusion", "Conclusions and Recommendations"),
+            ("references", "References"),
+        ]
+
+    for idx, (k, default_title) in enumerate(export_keys, 1):
+        v = chunks.get(k, "")
         if v and len(v.strip()) > 20:
             words = len(v.split())
             chapters.append({
                 "id": f"ch{idx}",
                 "key": k,
-                "title": chapter_titles.get(k, k.capitalize()),
+                "title": chapter_titles.get(k, default_title),
                 "text": v,
                 "word_count": words
             })
@@ -511,7 +631,8 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
             "font_info_available": False,
             "spacing_info_available": False,
             "word_count_total": total_words,
-            "structure_option": detect_structure_option(full_text)
+            "structure_option": structure_option,
+            "chapter_structure": chapter_structure
         }
     }
 

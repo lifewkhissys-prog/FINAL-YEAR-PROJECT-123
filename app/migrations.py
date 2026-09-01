@@ -22,6 +22,7 @@ ADDED_COLUMNS = [
     ("thesis_submissions", "pipeline_progress", "INTEGER"),
     ("thesis_submissions", "compliance_findings", "JSON"),
     ("thesis_submissions", "structure_option", "VARCHAR(20)"),
+    ("thesis_submissions", "chapter_structure", "VARCHAR(30)"),
     ("thesis_submissions", "cloudinary_url", "VARCHAR(500)"),
     ("thesis_submissions", "error_detail", "TEXT"),
     ("thesis_submissions", "flow_analysis_table", "TEXT"),

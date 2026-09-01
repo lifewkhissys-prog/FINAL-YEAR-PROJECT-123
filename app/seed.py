@@ -45,6 +45,7 @@ TARGET_CHAPTER_MAP = {
     "methodology": ["methodology"],
     "results": ["results", "data_analysis"],
     "discussion": ["discussion", "results"],
+    "results_and_discussion": ["results_and_discussion", "results", "discussion"],
     "conclusion": ["conclusion"],
     "document-wide": ["introduction", "conclusion"]
 }

@@ -108,6 +108,8 @@ class ThesisSubmission(Base):
     compliance_findings:        Mapped[Any | None] = mapped_column(JSON, nullable=True)
     # "monograph" (Guide Option 1) or "manuscript" (Option 2), detected from the chapter headings.
     structure_option:           Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # "five_chapter" (combined Results & Discussion) or "six_chapter" (separate Results and Discussion)
+    chapter_structure:          Mapped[str | None] = mapped_column(String(30), nullable=True)
     error_detail:               Mapped[str | None] = mapped_column(Text, nullable=True)
     flow_analysis_table:        Mapped[str | None] = mapped_column(Text, nullable=True)
     plagiarism_score:           Mapped[float | None] = mapped_column(Float, nullable=True)
