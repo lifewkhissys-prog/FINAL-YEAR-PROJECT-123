@@ -183,9 +183,7 @@ async def call_llm_async(
 
     last_error = None
     for model_name in candidate_models:
-        # Note: qwen models output reasoning tokens (<think>) which cause Groq's gateway
-        # JSON validator to reject immediately with json_validate_failed.
-        use_native_json = json_mode and not ("qwen" in model_name.lower())
+        use_native_json = json_mode
 
         for attempt in range(retries):
             try:
@@ -200,6 +198,15 @@ async def call_llm_async(
                     "temperature": temperature,
                     "max_completion_tokens": effective_max_tokens,
                 }
+
+                # Configure reasoning effort according to Groq documentation:
+                # - qwen3 models support 'none' to disable reasoning (prevents json_validate_failed)
+                # - gpt-oss models support 'low' to conserve tokens (TPM/TPD)
+                if "qwen" in model_name.lower():
+                    kwargs["reasoning_effort"] = "none"
+                elif "gpt-oss" in model_name.lower():
+                    kwargs["reasoning_effort"] = "low"
+
                 if use_native_json:
                     kwargs["response_format"] = {"type": "json_object"}
                     has_json_mention = any("json" in m["content"].lower() for m in messages)

@@ -14,12 +14,12 @@ export function AttemptHeader({
   return (
     <header className="h-16 border-b border-default bg-[var(--bg-primary)]/80 backdrop-blur-xl sticky top-0 z-20 flex items-center justify-between px-4 sm:px-6">
       <div className="flex items-center gap-4 min-w-0">
-        <Link 
-          to={backUrl || '/student/dashboard'} 
+        <Link
+          to={backUrl || '/student/dashboard'}
           className="btn-secondary flex items-center gap-2 text-xs py-1.5 px-3 uppercase tracking-wider font-semibold transition-colors"
           title="Exit current attempt and return"
         >
-          <ArrowLeft size={14} /> 
+          <ArrowLeft size={14} />
           <span className="hidden sm:inline">Exit Attempt</span>
         </Link>
       </div>
@@ -30,7 +30,7 @@ export function AttemptHeader({
             <CountdownTimer endsAt={endsAt} onExpired={onExpired} />
           </div>
         )}
-        
+
         <button
           onClick={onToggleFocusMode}
           className="btn-secondary py-1.5 px-3 flex items-center gap-2 text-xs uppercase tracking-wider font-semibold"
