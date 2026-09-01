@@ -84,8 +84,8 @@ export default function CriterionScoringPage() {
         const el = document.getElementById(`sub-crit-${targetSubCritId}`);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('ring-2', 'ring-amber-500', 'ring-offset-2');
-          setTimeout(() => el.classList.remove('ring-2', 'ring-amber-500', 'ring-offset-2'), 3000);
+          el.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2'), 3000);
         }
       }, 300);
       return () => clearTimeout(timer);
@@ -284,7 +284,7 @@ export default function CriterionScoringPage() {
                     id={`sub-crit-${item.sub_criterion_id}`}
                     className={`p-3.5 rounded-xl border transition-all duration-300 space-y-2.5 ${
                       isCardHighlighted
-                        ? 'border-amber-400 dark:border-amber-500 bg-amber-50/90 dark:bg-amber-950/50 shadow-md ring-2 ring-amber-400/50 border-l-4 border-l-amber-500'
+                        ? 'border-blue-400 dark:border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 shadow-md ring-2 ring-blue-400/40 border-l-4 border-l-blue-600'
                         : 'border-surface-container-highest bg-surface-container-lowest shadow-sm'
                     }`}
                   >
@@ -293,7 +293,7 @@ export default function CriterionScoringPage() {
                       <div className="flex items-center justify-between gap-1 mb-0.5">
                         <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">{item.criterion_name}</span>
                         {isCardHighlighted && (
-                          <span className="px-2 py-0.5 bg-amber-500 text-white font-bold text-[8px] rounded-full flex items-center gap-0.5 shadow-xs">
+                          <span className="px-2 py-0.5 bg-blue-600 text-white font-bold text-[8px] rounded-full flex items-center gap-0.5 shadow-xs">
                             <span className="material-symbols-outlined text-[9px]">auto_awesome</span>Active Highlight
                           </span>
                         )}
@@ -332,17 +332,17 @@ export default function CriterionScoringPage() {
 
                     {/* Evidence Citation Quote & Highlight Button */}
                     {(item.cited_text || item.evidence_quote) && (
-                      <div className="bg-amber-50 dark:bg-zinc-800 p-3 rounded-lg border border-amber-300 dark:border-zinc-600 space-y-2 shadow-xs">
-                        <div className="text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1">
-                          <span className="material-symbols-outlined text-xs text-amber-600 dark:text-amber-400">format_quote</span>
+                      <div className="bg-blue-50/70 dark:bg-blue-950/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800/60 space-y-2 shadow-xs">
+                        <div className="text-[9px] font-bold uppercase tracking-wider text-blue-900 dark:text-blue-300 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-xs text-blue-600 dark:text-blue-400">format_quote</span>
                           Evidence Citation
                         </div>
-                        <p className="text-xs font-serif italic text-slate-900 dark:text-slate-100 leading-relaxed">
+                        <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed font-normal">
                           "{item.cited_text || item.evidence_quote}"
                         </p>
                         <button
                           onClick={() => handleHighlightQuote(item.sub_criterion_id, item.cited_text || item.evidence_quote)}
-                          className="w-full py-1.5 px-2 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-bold rounded-md flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                          className="w-full py-1.5 px-2 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-md flex items-center justify-center gap-1.5 transition-colors shadow-xs"
                         >
                           <span className="material-symbols-outlined text-xs text-white">search</span>
                           Highlight Evidence in Document

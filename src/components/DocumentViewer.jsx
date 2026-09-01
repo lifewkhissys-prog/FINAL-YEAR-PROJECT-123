@@ -279,20 +279,20 @@ export default function DocumentViewer({
 
     if (matchedEl) {
       matchedEl.classList.add('docx-active-highlight', 'pdf-active-highlight');
-      matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.3)';
-      matchedEl.style.borderLeft = '4px solid #f59e0b';
+      matchedEl.style.backgroundColor = 'rgba(37, 99, 235, 0.2)';
+      matchedEl.style.borderLeft = '4px solid #2563eb';
       matchedEl.style.padding = '8px 12px';
       matchedEl.style.borderRadius = '6px';
-      matchedEl.style.boxShadow = '0 0 16px rgba(245, 158, 11, 0.4)';
+      matchedEl.style.boxShadow = '0 0 16px rgba(37, 99, 235, 0.35)';
       matchedEl.style.transition = 'all 0.3s ease';
 
       // Highlight associated figure image/canvas if present
       const associatedImg = findAssociatedImageElement(matchedEl);
       if (associatedImg) {
         associatedImg.classList.add('docx-img-highlight', 'pdf-img-highlight');
-        associatedImg.style.outline = '4px solid #f59e0b';
+        associatedImg.style.outline = '4px solid #2563eb';
         associatedImg.style.borderRadius = '8px';
-        associatedImg.style.boxShadow = '0 0 25px rgba(245, 158, 11, 0.5)';
+        associatedImg.style.boxShadow = '0 0 25px rgba(37, 99, 235, 0.45)';
         associatedImg.style.transition = 'all 0.3s ease';
       }
 
@@ -336,8 +336,8 @@ export default function DocumentViewer({
       const matchedEl = findMatchingDomElement(documentContainerRef.current, quote);
       if (matchedEl) {
         matchedEl.classList.add('docx-all-quote-highlight', 'pdf-all-quote-highlight');
-        matchedEl.style.backgroundColor = 'rgba(245, 158, 11, 0.2)';
-        matchedEl.style.borderBottom = '2px dashed #f59e0b';
+        matchedEl.style.backgroundColor = 'rgba(37, 99, 235, 0.12)';
+        matchedEl.style.borderBottom = '2px dashed #2563eb';
         matchedEl.style.cursor = 'pointer';
 
         const setupHoverAndClick = (targetEl) => {
@@ -366,9 +366,9 @@ export default function DocumentViewer({
         const associatedImg = findAssociatedImageElement(matchedEl);
         if (associatedImg) {
           associatedImg.classList.add('docx-all-img-highlight', 'pdf-all-img-highlight');
-          associatedImg.style.outline = '3px dashed #f59e0b';
+          associatedImg.style.outline = '3px dashed #2563eb';
           associatedImg.style.borderRadius = '6px';
-          associatedImg.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.3)';
+          associatedImg.style.boxShadow = '0 0 15px rgba(37, 99, 235, 0.25)';
           associatedImg.style.cursor = 'pointer';
           setupHoverAndClick(associatedImg);
         }
@@ -402,17 +402,17 @@ export default function DocumentViewer({
 
       {/* Quote Highlight Indicator Bar */}
       {activeQuoteHighlight && (
-        <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 px-4 py-2 flex items-center justify-between text-xs shrink-0 z-10">
-          <div className="flex items-center gap-2 text-amber-950 dark:text-amber-200 font-medium truncate">
-            <span className="material-symbols-outlined text-amber-600 text-sm shrink-0">format_quote</span>
+        <div className="bg-blue-50/90 dark:bg-blue-950/50 border-b border-blue-200 dark:border-blue-800/60 px-4 py-2 flex items-center justify-between text-xs shrink-0 z-10">
+          <div className="flex items-center gap-2 text-blue-950 dark:text-blue-200 font-medium truncate">
+            <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-sm shrink-0">format_quote</span>
             <span className="font-bold shrink-0">
               {highlightedSubCritId ? `Sub-Criterion #${highlightedSubCritId} Evidence:` : 'Cited Evidence:'}
             </span>
-            <span className="italic truncate text-[11px]">"{activeQuoteHighlight}"</span>
+            <span className="truncate text-[11px]">"{activeQuoteHighlight}"</span>
           </div>
           <button
             onClick={onClearHighlight}
-            className="text-[10px] font-bold text-amber-900 dark:text-amber-200 bg-amber-200/60 dark:bg-amber-800/60 hover:bg-amber-300 dark:hover:bg-amber-700 px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors shrink-0 ml-2"
+            className="text-[10px] font-bold text-blue-900 dark:text-blue-200 bg-blue-200/60 dark:bg-blue-800/60 hover:bg-blue-300 dark:hover:bg-blue-700 px-2 py-0.5 rounded-full flex items-center gap-1 transition-colors shrink-0 ml-2"
           >
             <span className="material-symbols-outlined text-[11px]">close</span>
             Clear Highlight
@@ -480,21 +480,21 @@ export default function DocumentViewer({
             }}
           >
             <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400 truncate">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 truncate">
                 {hoveredResult.item.criterion_name}
               </span>
-              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 font-bold text-[9px] rounded-full shrink-0">
+              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 font-bold text-[9px] rounded-full shrink-0">
                 AI: {hoveredResult.item.ai_score}/{hoveredResult.item.max_marks}
               </span>
             </div>
             
-            <h4 className="font-serif text-xs font-bold text-white leading-tight">
+            <h4 className="text-xs font-bold text-white leading-tight">
               {hoveredResult.item.sub_criterion_name}
             </h4>
 
             {hoveredResult.item.ai_justification && (
               <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 text-[11px] text-slate-200 leading-relaxed max-h-36 overflow-y-auto space-y-1">
-                <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-blue-400 flex items-center gap-1">
                   <span className="material-symbols-outlined text-[10px]">auto_awesome</span>
                   AI Critique & Breakdown
                 </div>
