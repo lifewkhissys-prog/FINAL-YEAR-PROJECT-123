@@ -24,7 +24,9 @@ def extract_text_from_pdf(file_path: str) -> str:
         import fitz
         doc = fitz.open(file_path)
         pages = [page.get_text() for page in doc]
-        return "\n\n".join(pages)
+        res = "\n\n".join(pages)
+        if len(res.strip()) > 50:
+            return res
     except Exception:
         pass
 
@@ -33,7 +35,9 @@ def extract_text_from_pdf(file_path: str) -> str:
         import pdfplumber
         with pdfplumber.open(file_path) as pdf:
             pages = [page.extract_text() or "" for page in pdf.pages]
-            return "\n\n".join(pages)
+            res = "\n\n".join(pages)
+            if len(res.strip()) > 50:
+                return res
     except Exception:
         pass
 
@@ -42,7 +46,9 @@ def extract_text_from_pdf(file_path: str) -> str:
         from pypdf import PdfReader
         reader = PdfReader(file_path)
         pages = [page.extract_text() or "" for page in reader.pages]
-        return "\n\n".join(pages)
+        res = "\n\n".join(pages)
+        if len(res.strip()) > 50:
+            return res
     except Exception:
         pass
 
@@ -320,7 +326,7 @@ def detect_structure_option(full_text: str) -> str:
     """
     if not full_text:
         return "monograph"
-    if re.search(r"(?i)\bchapter\s+(?:6|six)\b", full_text):
+    if re.search(r"(?im)^\s*(?:chapter\s+(?:6|six)\b|6\.0\b|chapter\s+vi\b)", full_text):
         return "monograph"
     if re.search(r"(?i)\b(?:topical|thematic)\s+chapter", full_text):
         return "manuscript"
@@ -340,9 +346,9 @@ def detect_chapter_structure(full_text: str) -> str:
     if not full_text:
         return "five_chapter"
 
-    # 1. Check for presence of Chapter 6 heading or numbered section 6.0
+    # 1. Check for presence of Chapter 6 heading or numbered section 6.0 (must be a line heading)
     has_chapter_6 = bool(re.search(
-        r"(?im)^\s*(?:chapter\s+(?:6|six)\b|6\.0\b)|\bchapter\s+(?:6|six)\b",
+        r"(?im)^\s*(?:chapter\s+(?:6|six)\b|6\.0\b|chapter\s+vi\b)",
         full_text
     ))
 
@@ -697,8 +703,11 @@ def run_deterministic_findings(doc_structure: Dict[str, Any], degree_level: str)
 
     # 4. Check missing chapters
     chap_keys = {c.get("key") for c in doc_structure.get("chapters", [])}
-    expected = ["introduction", "methodology", "results", "conclusion"]
+    expected = ["introduction", "methodology", "conclusion"]
+    has_results = "results" in chap_keys or "results_and_discussion" in chap_keys
     missing = [k for k in expected if k not in chap_keys]
+    if not has_results:
+        missing.append("results")
     if missing:
         findings.append({
             "check": "chapter_completeness",

@@ -50,8 +50,19 @@ FRONT_MATTER_PATTERNS = {
     ),
     "Abstract": r"^\s*abstract\s*$",
     "Table of Contents": r"\btable\s+of\s+contents?\b",
-    "List of Tables": r"\blist\s+of\s+tables\b",
-    "List of Figures": r"\blist\s+of\s+figures\b",
+    "List of Tables": (
+        r"\blist\s+of\s+tables\b"
+        r"|\bindex\s+of\s+tables\b"
+        r"|\btables?\s+index\b"
+        r"|^\s*tables\s*$"
+    ),
+    "List of Figures": (
+        r"\blist\s+of\s+figures\b"
+        r"|\blist\s+of\s+illustrations\b"
+        r"|\bindex\s+of\s+figures\b"
+        r"|\bfigures?\s+index\b"
+        r"|^\s*figures\s*$"
+    ),
 }
 
 FRONT_MATTER_FLAGS = re.IGNORECASE | re.MULTILINE
