@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse, Response, RedirectResponse, Fil
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -1025,6 +1026,118 @@ async def export_submission_report_docx(
         docx_stream,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f"attachment; filename={clean_title}_assessment_report.docx"}
+    )
+
+
+@router.get("/submissions/{id}/export-markdown")
+async def export_submission_citations_markdown(
+    id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_lecturer)
+):
+    """Generates and downloads a complete Markdown (README format) dossier of all evidence citations and AI reasoning."""
+    stmt = select(ThesisSubmission).where(ThesisSubmission.id == id)
+    sub = (await db.execute(stmt)).scalars().first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    check_submission_access(sub, current_user)
+
+    ar_stmt = (
+        select(AssessmentResult)
+        .where(AssessmentResult.submission_id == id)
+        .options(selectinload(AssessmentResult.sub_criterion).selectinload(RubricSubCriterion.criterion))
+        .order_by(AssessmentResult.id.asc())
+    )
+    results = (await db.execute(ar_stmt)).scalars().all()
+
+    total_score = 0.0
+    max_possible = 0.0
+    for r in results:
+        sub_c = r.sub_criterion
+        eff = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
+        if sub_c and eff is not None:
+            total_score += eff
+            max_possible += sub_c.max_marks
+
+    pct = round((total_score / max_possible * 100), 1) if max_possible > 0 else None
+    grade_info = grade_for(pct)
+
+    title_str = sub.title or "Thesis Assessment"
+    student_str = sub.student_name or "Candidate"
+    deg_str = (sub.degree_level or "undergraduate").upper()
+    inst_str = sub.institution or "Kwame Nkrumah University of Science and Technology (KNUST)"
+    rec_str = sub.supervisor_recommendation or grade_info.get("recommendation_detail", "N/A")
+
+    lines = [
+        f"# Citations & Evidence Dossier: {title_str}\n",
+        f"> **Supervisor Assessment & AI Grounding Report (README Format)**\n",
+        "## Candidate & Assessment Metadata\n",
+        f"- **Candidate Name:** {student_str}",
+        f"- **Index Number:** {sub.index_number or 'N/A'}",
+        f"- **Degree Programme:** {sub.programme or 'Computer Science'}",
+        f"- **Institution:** {inst_str}",
+        f"- **Degree Level:** {deg_str}",
+        f"- **Evaluation Status:** {sub.status.upper()}",
+        f"- **Overall Score:** {round(total_score, 1)} / {round(max_possible, 1)} ({pct}%) — Grade {grade_info.get('grade')}, {grade_info.get('interpretation')}",
+        f"- **Formal Recommendation:** {rec_str}\n",
+        "---\n",
+        "## Table of Evaluated Criteria\n",
+        "| No. | Rubric Sub-Criterion | Score / Max | Verification | Target Chapter |",
+        "| :---: | :--- | :---: | :---: | :--- |"
+    ]
+
+    for idx, r in enumerate(results, 1):
+        sub_c = r.sub_criterion
+        sub_name = sub_c.name if sub_c else f"Criterion #{r.sub_criterion_id}"
+        max_m = sub_c.max_marks if sub_c else 0.0
+        eff = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
+        score_disp = f"{eff if eff is not None else 0.0} / {max_m}"
+        ver_disp = "✅ Passed" if r.verifier_passed else ("⚠️ Flagged" if r.verifier_passed is False else "—")
+        ch_target = (sub_c.chapter_target if sub_c and hasattr(sub_c, "chapter_target") else "general") or "general"
+        lines.append(f"| {idx} | {sub_name} | {score_disp} | {ver_disp} | {ch_target.replace('_', ' ').title()} |")
+
+    lines.append("\n---\n")
+    lines.append("## Detailed Evidence Citations & Evaluator Reasoning\n")
+
+    for idx, r in enumerate(results, 1):
+        sub_c = r.sub_criterion
+        crit = sub_c.criterion if sub_c else None
+        crit_name = crit.name if crit else "General Evaluation"
+        sub_name = sub_c.name if sub_c else f"Sub-Criterion #{r.sub_criterion_id}"
+        max_m = sub_c.max_marks if sub_c else 0.0
+        eff = r.supervisor_override_score if r.supervisor_override_score is not None else r.ai_score
+        ver_status = "✅ Verified by Stage 8 Auditor" if r.verifier_passed else ("⚠️ Verification Flagged / Audited" if r.verifier_passed is False else "Not Audited")
+
+        lines.append(f"### {idx}. {crit_name}: {sub_name}")
+        lines.append(f"- **Score:** **{eff if eff is not None else 0.0} / {max_m} marks**" + (f" *(Supervisor override from AI mark {r.ai_score})*" if r.supervisor_override_score is not None else ""))
+        lines.append(f"- **Verification:** {ver_status}")
+        if r.confidence_score:
+            lines.append(f"- **Confidence:** {r.confidence_score}%")
+        if r.verifier_notes:
+            lines.append(f"- **Verifier Audit Notes:** {r.verifier_notes}")
+        lines.append("")
+        lines.append("#### 📝 Verbatim Cited Text from Manuscript:")
+        if r.cited_text and r.cited_text.strip():
+            quoted_block = "\n> ".join(r.cited_text.strip().split("\n"))
+            lines.append(f"> {quoted_block}\n")
+        else:
+            lines.append("> *No verbatim text cited for this sub-criterion.*\n")
+
+        lines.append("#### 💡 AI Evaluator Justification & Feedback:")
+        if r.ai_justification and r.ai_justification.strip():
+            lines.append(f"{r.ai_justification.strip()}\n")
+        else:
+            lines.append("*No justification text recorded.*\n")
+
+        lines.append("---\n")
+
+    md_content = "\n".join(lines)
+    clean_title = (sub.title or "thesis").replace(" ", "_")
+    
+    return Response(
+        content=md_content,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={clean_title}_citations_README.md"}
     )
 
 

@@ -41,6 +41,7 @@ export default function CriterionScoringPage() {
   const [overrideScores, setOverrideScores] = useState({});
   const [activeQuoteHighlight, setActiveQuoteHighlight] = useState('');
   const [highlightedSubCritId, setHighlightedSubCritId] = useState(null);
+  const [isExportingMd, setIsExportingMd] = useState(false);
 
   const documentReaderRef = useRef(null);
 
@@ -170,6 +171,28 @@ export default function CriterionScoringPage() {
     }, 100);
   };
 
+  const handleExportMarkdown = async () => {
+    setIsExportingMd(true);
+    try {
+      const res = await authFetch(`/api/submissions/${id}/export-markdown`);
+      if (!res.ok) throw new Error("Markdown export failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `thesis_citations_README_${id}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting citations to Markdown:", err);
+      alert("Failed to export Markdown dossier.");
+    } finally {
+      setIsExportingMd(false);
+    }
+  };
+
   const chapterSubtotal = results.reduce((acc, r) => {
     const scoreVal = overrideScores[r.sub_criterion_id] !== undefined ? overrideScores[r.sub_criterion_id] : r.ai_score;
     return acc + (scoreVal || 0);
@@ -250,13 +273,25 @@ export default function CriterionScoringPage() {
               </h2>
             </div>
 
-            <button
-              onClick={() => navigate(`/thesis/submission/${id}/verification`)}
-              className="px-2.5 py-1 bg-surface-container hover:bg-surface-container-high text-primary text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors border border-surface-container-highest"
-            >
-              <span>Verification Gate</span>
-              <span className="material-symbols-outlined text-xs">arrow_forward</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleExportMarkdown}
+                disabled={isExportingMd}
+                className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors shadow-sm disabled:opacity-60"
+                title="Download all verbatim citations, scores, and evaluator justifications as a formatted README.md"
+              >
+                <span className="material-symbols-outlined text-xs">markdown</span>
+                <span>{isExportingMd ? 'Exporting...' : 'Export Citations (.md)'}</span>
+              </button>
+
+              <button
+                onClick={() => navigate(`/thesis/submission/${id}/verification`)}
+                className="px-2.5 py-1 bg-surface-container hover:bg-surface-container-high text-primary text-[10px] font-bold rounded-md flex items-center gap-1 transition-colors border border-surface-container-highest"
+              >
+                <span>Verification Gate</span>
+                <span className="material-symbols-outlined text-xs">arrow_forward</span>
+              </button>
+            </div>
           </div>
 
           {/* Reader Content: Dedicated Document Viewer */}

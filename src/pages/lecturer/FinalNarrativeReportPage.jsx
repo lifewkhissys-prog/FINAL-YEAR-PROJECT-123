@@ -14,6 +14,7 @@ export default function FinalNarrativeReportPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingMd, setIsExportingMd] = useState(false);
   const [viewMode, setViewMode] = useState('docx'); // 'docx' page preview vs 'editor' raw text
 
   useEffect(() => {
@@ -95,6 +96,28 @@ export default function FinalNarrativeReportPage() {
     }
   };
 
+  const handleExportMarkdown = async () => {
+    setIsExportingMd(true);
+    try {
+      const res = await authFetch(`/api/submissions/${id}/export-markdown`);
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `thesis_citations_README_${id}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Error exporting citations to Markdown:", err);
+      alert("Failed to export Markdown dossier.");
+    } finally {
+      setIsExportingMd(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background text-on-surface font-body flex flex-col">
       <NavigationHeader />
@@ -121,6 +144,16 @@ export default function FinalNarrativeReportPage() {
               className="px-3 py-1.5 border border-outline-variant text-on-surface-variant text-xs font-semibold rounded-lg hover:bg-surface-container transition-colors whitespace-nowrap"
             >
               Back to Verification
+            </button>
+
+            <button
+              onClick={handleExportMarkdown}
+              disabled={isExportingMd}
+              className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-sm disabled:opacity-60 whitespace-nowrap"
+              title="Download all verbatim evidence citations, scores, and evaluator justifications as a formatted README.md"
+            >
+              <span className="material-symbols-outlined text-base">markdown</span>
+              <span>{isExportingMd ? 'Exporting...' : 'Export Citations (.md / README)'}</span>
             </button>
 
             <button
