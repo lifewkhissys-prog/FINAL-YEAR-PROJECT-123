@@ -572,32 +572,43 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
         figures.append({"id": f"fig{idx}", "caption": caption[:150]})
 
     # Extract & analyze images using Groq LLaMA 3.2 Vision API (capped at 5 figures)
-    if file_path and file_path.lower().endswith(".pdf") and os.path.exists(file_path):
+    if file_path and os.path.exists(file_path):
         try:
-            import fitz
             from app.services.vision_service import analyze_figure_image_sync
-            doc = fitz.open(file_path)
-            extracted_count = 0
-            for page_num in range(len(doc)):
-                if extracted_count >= 5:
-                    break
-                page = doc[page_num]
-                image_list = page.get_images()
-                for img_info in image_list:
-                    if extracted_count >= 5:
+            image_bytes_list = []
+            if file_path.lower().endswith(".pdf"):
+                import fitz
+                doc = fitz.open(file_path)
+                for page in doc:
+                    for img_info in page.get_images():
+                        base_image = doc.extract_image(img_info[0])
+                        b = base_image.get("image")
+                        if b and len(b) > 5000:
+                            image_bytes_list.append(b)
+                            if len(image_bytes_list) >= 5:
+                                break
+                    if len(image_bytes_list) >= 5:
                         break
-                    xref = img_info[0]
-                    base_image = doc.extract_image(xref)
-                    image_bytes = base_image.get("image")
-                    if image_bytes and len(image_bytes) > 5000:
-                        caption_hint = figures[extracted_count]["caption"] if extracted_count < len(figures) else f"Figure on page {page_num+1}"
-                        analysis = analyze_figure_image_sync(image_bytes, caption_hint)
-                        if analysis:
-                            if extracted_count < len(figures):
-                                figures[extracted_count]["vision_analysis"] = analysis
-                            else:
-                                figures.append({"id": f"fig{extracted_count+1}", "caption": caption_hint, "vision_analysis": analysis})
-                            extracted_count += 1
+            elif file_path.lower().endswith(".docx"):
+                import zipfile
+                with zipfile.ZipFile(file_path, "r") as zf:
+                    media_names = [n for n in zf.namelist() if n.startswith("word/media/")]
+                    media_names.sort()
+                    for name in media_names:
+                        b = zf.read(name)
+                        if len(b) > 5000:
+                            image_bytes_list.append(b)
+                            if len(image_bytes_list) >= 5:
+                                break
+
+            for idx, img_bytes in enumerate(image_bytes_list):
+                caption_hint = figures[idx]["caption"] if idx < len(figures) else f"Figure {idx+1}"
+                analysis = analyze_figure_image_sync(img_bytes, caption_hint)
+                if analysis:
+                    if idx < len(figures):
+                        figures[idx]["vision_analysis"] = analysis
+                    else:
+                        figures.append({"id": f"fig{idx+1}", "caption": caption_hint, "vision_analysis": analysis})
         except Exception as e:
             print(f"Vision figure extraction notice: {e}")
 
@@ -614,6 +625,8 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
     ref_text = chunks.get("references", "")
     references = []
     if ref_text:
+        # Cut off any appendices that follow references
+        ref_text = re.split(r"(?im)^\s*appendix\b", ref_text)[0].strip()
         ref_lines = [r.strip() for r in ref_text.split("\n\n") if len(r.strip()) > 20]
         if not ref_lines:
             ref_lines = [r.strip() for r in ref_text.split("\n") if len(r.strip()) > 30]
@@ -621,8 +634,8 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
         # Check in-text citation for each reference
         body_text = "\n\n".join(v for k, v in chunks.items() if k != "references")
         for idx, ref in enumerate(ref_lines[:100], 1):
-            # Try author surname matching
-            author_match = re.search(r"^([A-Z][a-zA-Z\-]+)", ref)
+            # Try author surname matching (handles unicode letters)
+            author_match = re.search(r"^([^\W\d_]+)", ref, re.UNICODE)
             author = author_match.group(1) if author_match else ""
             year_match = re.search(r"\b(19\d\d|20\d\d)\b", ref)
             year = year_match.group(1) if year_match else ""
@@ -630,7 +643,9 @@ def extract_document_structure(full_text: str, file_path: str = None) -> Dict[st
             cited = False
             if author and len(author) > 2 and author.lower() not in ("the", "and", "a", "an"):
                 if year:
-                    cited = bool(re.search(rf"\b{re.escape(author)}\b.{0,30}\b{year}\b", body_text, re.IGNORECASE))
+                    cited = bool(re.search(rf"\b{re.escape(author)}\b.{{0,35}}\b{year}\b", body_text, re.IGNORECASE))
+                    if not cited and "kwame" in author.lower():
+                        cited = bool(re.search(rf"\b(?:KNUST|Kwame)\b.{{0,40}}\b{year}\b", body_text, re.IGNORECASE))
                 else:
                     cited = author.lower() in body_text.lower()
             elif year:
