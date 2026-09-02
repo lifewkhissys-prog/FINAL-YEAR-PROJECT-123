@@ -160,7 +160,7 @@ async def call_llm_async(
         raise ValueError("GROQ_API_KEY is not configured in settings or .env file.")
 
     candidate_models = [primary_model]
-    for fallback in ["groq/compound-mini", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.6-27b"]:
+    for fallback in ["llama-3.3-70b-versatile", "openai/gpt-oss-20b", "openai/gpt-oss-120b", "qwen/qwen3.6-27b", "llama-3.1-8b-instant"]:
         if fallback not in candidate_models:
             candidate_models.append(fallback)
 
@@ -236,10 +236,10 @@ async def call_llm_async(
                 last_error = e
                 err_str = str(e).lower()
                 
-                # 1. Daily Token limit (TPD) reached (e.g. Limit 200,000 TPD exhausted for the day)
-                if "tokens per day" in err_str or "tpd" in err_str:
-                    logger.warning("Daily token limit (TPD) reached for model '%s'. Moving immediately to next candidate...", model_name)
-                    break  # Don't wait minutes; switch immediately to next candidate model!
+                # 1. Daily Token limit (TPD) or Daily Request limit (RPD) reached
+                if "tokens per day" in err_str or "tpd" in err_str or "requests per day" in err_str or "rpd" in err_str or "daily" in err_str:
+                    logger.warning("Daily quota (TPD/RPD) reached for model '%s'. Moving immediately to next candidate model...", model_name)
+                    break  # Don't wait or retry; switch immediately to next candidate model!
 
                 # 2. Model not found / 404
                 elif "model_not_found" in err_str or "does not exist" in err_str or "404" in err_str:
@@ -611,7 +611,8 @@ Respond ONLY in this JSON format:
         candidate_models = [
             settings.GROQ_SCORER_MODEL,
             settings.GROQ_FAST_MODEL,
-            "groq/compound-mini"
+            "llama-3.3-70b-versatile",
+            "qwen/qwen3.6-27b"
         ]
 
         for attempt, model_name in enumerate(candidate_models):
