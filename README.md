@@ -28,5 +28,8 @@ npm run dev
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
-
+### Backend (Docker Compose)
+```bash
+    docker compose up -d --build
+```
 
