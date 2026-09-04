@@ -16,7 +16,10 @@ export function LoginPage() {
   const location = useLocation();
   const setAuth = useAuthStore((state) => state.login);
 
-  const initialError = location.state?.error;
+  const queryParams = new URLSearchParams(location.search);
+  const isExpired = queryParams.get('expired') === 'true';
+  const initialError = location.state?.error || (isExpired ? 'Your session has expired. Please sign in again.' : '');
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();

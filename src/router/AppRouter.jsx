@@ -2,6 +2,7 @@ import React, { Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import useAuthStore from '../store/authStore';
+import { getUserFromToken } from '../utils/auth';
 
 // Auth Pages
 const LoginPage = React.lazy(() => import('../pages/auth/LoginPage').then(module => ({ default: module.LoginPage })));
@@ -27,11 +28,14 @@ const PageLoader = () => (
 );
 
 function ProtectedRoute({ children }) {
-  const { isAuthenticated, user, logout } = useAuthStore();
+  const { isAuthenticated, user, token, logout } = useAuthStore();
   const location = useLocation();
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isAuthenticated || !token || !getUserFromToken(token)) {
+    if (isAuthenticated) {
+      logout();
+    }
+    return <Navigate to="/login?expired=true" state={{ from: location }} replace />;
   }
 
   if (user?.role !== 'lecturer') {
